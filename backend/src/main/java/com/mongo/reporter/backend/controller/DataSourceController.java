@@ -2,6 +2,7 @@ package com.mongo.reporter.backend.controller;
 
 import com.mongo.reporter.backend.model.DataSource;
 import com.mongo.reporter.backend.repository.DataSourceRepository;
+import com.mongo.reporter.backend.util.MongoConnectionUtil;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -10,7 +11,6 @@ import org.springframework.web.bind.annotation.*;
 import javax.crypto.SecretKey;
 import java.util.*;
 import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoClients;
 import com.mongodb.MongoException;
 
 @RestController
@@ -19,6 +19,9 @@ public class DataSourceController {
     
     @Autowired
     private DataSourceRepository dataSourceRepository;
+    
+    @Autowired
+    private MongoConnectionUtil mongoConnectionUtil;
     
     private final String jwtSecret = "mongo-reporter-secret-key-256-bits-long";
     private final SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes());
@@ -53,38 +56,39 @@ public class DataSourceController {
     }
 
     @PostMapping("/test")
-    public Map<String, Object> testConnection(@RequestBody Map<String, String> request) {
-        String uri = request.get("uri");
+    public Map<String, Object> testConnection(@RequestBody Map<String, Object> request) {
         Map<String, Object> result = new HashMap<>();
         
-        if (uri == null || uri.trim().isEmpty()) {
-            result.put("success", false);
-            result.put("message", "连接字符串不能为空");
-            return result;
-        }
-        
-        MongoClient mongoClient = null;
-        try {
-            mongoClient = MongoClients.create(uri);
-            // 尝试获取数据库列表来验证连接
-            mongoClient.listDatabaseNames().first();
+        // 检查是否有完整的数据源信息
+        if (request.containsKey("dataSource")) {
+            // 使用完整的数据源对象进行测试
+            Map<String, Object> dataSourceMap = (Map<String, Object>) request.get("dataSource");
+            DataSource dataSource = new DataSource();
+            dataSource.setUri((String) dataSourceMap.get("uri"));
+            dataSource.setUsername((String) dataSourceMap.get("username"));
+            dataSource.setPassword((String) dataSourceMap.get("password"));
+            dataSource.setAuthDatabase((String) dataSourceMap.get("authDatabase"));
+            dataSource.setUseAuth(Boolean.TRUE.equals(dataSourceMap.get("useAuth")));
             
-            result.put("success", true);
-            result.put("message", "连接成功");
-        } catch (MongoException e) {
-            result.put("success", false);
-            result.put("message", "连接失败: " + e.getMessage());
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "连接失败: " + e.getMessage());
-        } finally {
-            if (mongoClient != null) {
-                try {
-                    mongoClient.close();
-                } catch (Exception e) {
-                    // 忽略关闭时的异常
-                }
+            boolean success = mongoConnectionUtil.testConnection(dataSource);
+            result.put("success", success);
+            result.put("message", success ? "连接成功" : "连接失败");
+        } else {
+            // 兼容旧的测试方式
+            String uri = (String) request.get("uri");
+            if (uri == null || uri.trim().isEmpty()) {
+                result.put("success", false);
+                result.put("message", "连接字符串不能为空");
+                return result;
             }
+            
+            DataSource dataSource = new DataSource();
+            dataSource.setUri(uri);
+            dataSource.setUseAuth(false);
+            
+            boolean success = mongoConnectionUtil.testConnection(dataSource);
+            result.put("success", success);
+            result.put("message", success ? "连接成功" : "连接失败");
         }
         
         return result;

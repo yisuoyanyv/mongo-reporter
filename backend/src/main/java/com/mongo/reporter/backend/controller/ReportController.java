@@ -1,7 +1,9 @@
 package com.mongo.reporter.backend.controller;
 
 import com.mongo.reporter.backend.model.ReportConfig;
+import com.mongo.reporter.backend.model.DataSource;
 import com.mongo.reporter.backend.repository.ReportConfigRepository;
+import com.mongo.reporter.backend.util.MongoConnectionUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.web.bind.annotation.*;
@@ -13,7 +15,6 @@ import javax.crypto.SecretKey;
 
 import java.util.*;
 import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.MongoIterable;
 import com.mongodb.MongoException;
@@ -28,17 +29,36 @@ public class ReportController {
     @Autowired
     private ReportConfigRepository reportConfigRepository;
     
+    @Autowired
+    private MongoConnectionUtil mongoConnectionUtil;
+    
     private final String jwtSecret = "mongo-reporter-secret-key-256-bits-long";
     private final SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes());
 
     @GetMapping("/collections")
     public List<String> listCollectionsByUri(@RequestParam String uri) {
+        return listCollectionsByUriWithAuth(uri, null, null, null);
+    }
+    
+    @PostMapping("/collections/auth")
+    public List<String> listCollectionsByUriWithAuth(@RequestParam String uri, 
+                                                    @RequestParam(required = false) String username,
+                                                    @RequestParam(required = false) String password,
+                                                    @RequestParam(required = false) String authDatabase) {
         MongoClient mongoClient = null;
         try {
-            mongoClient = MongoClients.create(uri);
+            // 创建数据源对象
+            DataSource dataSource = new DataSource();
+            dataSource.setUri(uri);
+            dataSource.setUsername(username);
+            dataSource.setPassword(password);
+            dataSource.setAuthDatabase(authDatabase);
+            dataSource.setUseAuth(username != null && password != null);
+            
+            mongoClient = mongoConnectionUtil.createMongoClient(dataSource);
             
             // 从URI中提取数据库名称
-            String databaseName = extractDatabaseName(uri);
+            String databaseName = mongoConnectionUtil.extractDatabaseName(uri);
             if (databaseName == null) {
                 return new ArrayList<>();
             }
@@ -68,12 +88,29 @@ public class ReportController {
 
     @GetMapping("/fields")
     public List<String> listFieldsByUriAndCollection(@RequestParam String uri, @RequestParam String collection) {
+        return listFieldsByUriAndCollectionWithAuth(uri, collection, null, null, null);
+    }
+    
+    @PostMapping("/fields/auth")
+    public List<String> listFieldsByUriAndCollectionWithAuth(@RequestParam String uri, 
+                                                            @RequestParam String collection,
+                                                            @RequestParam(required = false) String username,
+                                                            @RequestParam(required = false) String password,
+                                                            @RequestParam(required = false) String authDatabase) {
         MongoClient mongoClient = null;
         try {
-            mongoClient = MongoClients.create(uri);
+            // 创建数据源对象
+            DataSource dataSource = new DataSource();
+            dataSource.setUri(uri);
+            dataSource.setUsername(username);
+            dataSource.setPassword(password);
+            dataSource.setAuthDatabase(authDatabase);
+            dataSource.setUseAuth(username != null && password != null);
+            
+            mongoClient = mongoConnectionUtil.createMongoClient(dataSource);
             
             // 从URI中提取数据库名称
-            String databaseName = extractDatabaseName(uri);
+            String databaseName = mongoConnectionUtil.extractDatabaseName(uri);
             if (databaseName == null) {
                 return new ArrayList<>();
             }
@@ -103,12 +140,30 @@ public class ReportController {
     @GetMapping("/data")
     public List<Map<String, Object>> getData(@RequestParam String uri, @RequestParam String collection, 
                                             @RequestParam(defaultValue = "100") int limit) {
+        return getDataWithAuth(uri, collection, limit, null, null, null);
+    }
+    
+    @PostMapping("/data/auth")
+    public List<Map<String, Object>> getDataWithAuth(@RequestParam String uri, 
+                                                    @RequestParam String collection,
+                                                    @RequestParam(defaultValue = "100") int limit,
+                                                    @RequestParam(required = false) String username,
+                                                    @RequestParam(required = false) String password,
+                                                    @RequestParam(required = false) String authDatabase) {
         MongoClient mongoClient = null;
         try {
-            mongoClient = MongoClients.create(uri);
+            // 创建数据源对象
+            DataSource dataSource = new DataSource();
+            dataSource.setUri(uri);
+            dataSource.setUsername(username);
+            dataSource.setPassword(password);
+            dataSource.setAuthDatabase(authDatabase);
+            dataSource.setUseAuth(username != null && password != null);
+            
+            mongoClient = mongoConnectionUtil.createMongoClient(dataSource);
             
             // 从URI中提取数据库名称
-            String databaseName = extractDatabaseName(uri);
+            String databaseName = mongoConnectionUtil.extractDatabaseName(uri);
             if (databaseName == null) {
                 return new ArrayList<>();
             }
@@ -240,10 +295,23 @@ public class ReportController {
         
         MongoClient mongoClient = null;
         try {
-            mongoClient = MongoClients.create(uri);
+            // 检查是否有认证信息
+            String username = (String) request.get("username");
+            String password = (String) request.get("password");
+            String authDatabase = (String) request.get("authDatabase");
+            
+            // 创建数据源对象
+            DataSource dataSource = new DataSource();
+            dataSource.setUri(uri);
+            dataSource.setUsername(username);
+            dataSource.setPassword(password);
+            dataSource.setAuthDatabase(authDatabase);
+            dataSource.setUseAuth(username != null && password != null);
+            
+            mongoClient = mongoConnectionUtil.createMongoClient(dataSource);
             
             // 从URI中提取数据库名称
-            String databaseName = extractDatabaseName(uri);
+            String databaseName = mongoConnectionUtil.extractDatabaseName(uri);
             if (databaseName == null) {
                 return Map.of("success", false, "message", "无法解析数据库名称");
             }
@@ -271,6 +339,10 @@ public class ReportController {
                 return processScatterChart(data, widget);
             } else if ("gauge".equals(chartType)) {
                 return processGaugeChart(data, widget);
+            } else if ("funnel".equals(chartType)) {
+                return processFunnelChart(data, widget);
+            } else if ("radar".equals(chartType)) {
+                return processRadarChart(data, widget);
             } else if ("table".equals(chartType)) {
                 return processTableData(data, widget);
             } else {
@@ -617,26 +689,38 @@ public class ReportController {
         String valueField = (String) widget.get("valueField");
         Number min = (Number) widget.get("min");
         Number max = (Number) widget.get("max");
+        Boolean enableStats = (Boolean) widget.get("enableStats");
+        String aggregation = (String) widget.get("aggregation");
         
-        double totalValue = 0.0;
-        int count = 0;
-        
+        // 收集数值数据
+        List<Number> values = new ArrayList<>();
         for (Map<String, Object> item : data) {
             Number value = (Number) item.get(valueField);
             if (value != null) {
-                totalValue += value.doubleValue();
-                count++;
+                values.add(value);
             }
         }
         
-        double avgValue = count > 0 ? totalValue / count : 0.0;
+        // 根据统计配置计算值
+        double calculatedValue;
+        String displayName;
+        
+        if (enableStats != null && enableStats && aggregation != null) {
+            calculatedValue = calculateAggregation(values, aggregation);
+            displayName = getAggregationDisplayName(aggregation);
+        } else {
+            // 默认计算平均值
+            calculatedValue = values.isEmpty() ? 0.0 : values.stream().mapToDouble(Number::doubleValue).average().orElse(0.0);
+            displayName = "平均值";
+        }
+        
         double minValue = min != null ? min.doubleValue() : 0.0;
         double maxValue = max != null ? max.doubleValue() : 100.0;
         
         List<Map<String, Object>> seriesData = new ArrayList<>();
         Map<String, Object> item = new HashMap<>();
-        item.put("name", "平均值");
-        item.put("value", avgValue);
+        item.put("name", displayName);
+        item.put("value", calculatedValue);
         seriesData.add(item);
         
         Map<String, Object> result = new HashMap<>();
@@ -644,6 +728,129 @@ public class ReportController {
         result.put("series", seriesData);
         result.put("min", minValue);
         result.put("max", maxValue);
+        
+        return result;
+    }
+    
+    private Map<String, Object> processFunnelChart(List<Map<String, Object>> data, Map<String, Object> widget) {
+        String nameField = (String) widget.get("nameField");
+        String valueField = (String) widget.get("valueField");
+        Boolean enableStats = (Boolean) widget.get("enableStats");
+        String aggregation = (String) widget.get("aggregation");
+        String sortBy = (String) widget.get("sortBy");
+        String sortOrder = (String) widget.get("sortOrder");
+        Integer limit = (Integer) widget.get("limit");
+        
+        Map<String, Double> aggregatedData = new HashMap<>();
+        
+        for (Map<String, Object> item : data) {
+            String name = String.valueOf(item.get(nameField));
+            Number value = (Number) item.get(valueField);
+            
+            if (enableStats != null && enableStats && "count".equals(aggregation)) {
+                aggregatedData.merge(name, 1.0, Double::sum);
+            } else {
+                aggregatedData.merge(name, value != null ? value.doubleValue() : 0.0, Double::sum);
+            }
+        }
+        
+        List<Map<String, Object>> seriesData = new ArrayList<>();
+        for (Map.Entry<String, Double> entry : aggregatedData.entrySet()) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("name", entry.getKey());
+            item.put("value", entry.getValue());
+            seriesData.add(item);
+        }
+        
+        // 排序
+        if (sortBy != null && !sortBy.isEmpty()) {
+            seriesData.sort((a, b) -> {
+                double aValue = ((Number) a.get("value")).doubleValue();
+                double bValue = ((Number) b.get("value")).doubleValue();
+                return "desc".equals(sortOrder) ? Double.compare(bValue, aValue) : Double.compare(aValue, bValue);
+            });
+        }
+        
+        // 限制数量
+        if (limit != null && limit > 0 && seriesData.size() > limit) {
+            seriesData = seriesData.subList(0, limit);
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("series", seriesData);
+        
+        return result;
+    }
+    
+    private Map<String, Object> processRadarChart(List<Map<String, Object>> data, Map<String, Object> widget) {
+        String nameField = (String) widget.get("nameField");
+        String valueField = (String) widget.get("valueField");
+        String seriesField = (String) widget.get("seriesField");
+        Boolean enableStats = (Boolean) widget.get("enableStats");
+        String aggregation = (String) widget.get("aggregation");
+        String sortBy = (String) widget.get("sortBy");
+        String sortOrder = (String) widget.get("sortOrder");
+        Integer limit = (Integer) widget.get("limit");
+        
+        Map<String, Map<String, Double>> seriesData = new HashMap<>();
+        Set<String> indicators = new HashSet<>();
+        
+        for (Map<String, Object> item : data) {
+            String name = String.valueOf(item.get(nameField));
+            Number value = (Number) item.get(valueField);
+            String series = seriesField != null ? String.valueOf(item.get(seriesField)) : "default";
+            
+            if (value != null) {
+                indicators.add(name);
+                seriesData.computeIfAbsent(series, k -> new HashMap<>()).merge(name, value.doubleValue(), Double::sum);
+            }
+        }
+        
+        // 构建雷达图数据
+        List<String> indicatorList = new ArrayList<>(indicators);
+        if (sortBy != null && !sortBy.isEmpty()) {
+            // 排序指标
+            indicatorList.sort((a, b) -> {
+                double aValue = seriesData.values().stream().mapToDouble(m -> m.getOrDefault(a, 0.0)).sum();
+                double bValue = seriesData.values().stream().mapToDouble(m -> m.getOrDefault(b, 0.0)).sum();
+                return "desc".equals(sortOrder) ? Double.compare(bValue, aValue) : Double.compare(aValue, bValue);
+            });
+        }
+        
+        // 限制数量
+        if (limit != null && limit > 0 && indicatorList.size() > limit) {
+            indicatorList = indicatorList.subList(0, limit);
+        }
+        
+        // 构建指标数据
+        List<Map<String, Object>> indicatorsData = new ArrayList<>();
+        for (String indicator : indicatorList) {
+            Map<String, Object> indicatorItem = new HashMap<>();
+            indicatorItem.put("name", indicator);
+            indicatorItem.put("max", seriesData.values().stream().mapToDouble(m -> m.getOrDefault(indicator, 0.0)).max().orElse(100.0));
+            indicatorsData.add(indicatorItem);
+        }
+        
+        // 构建系列数据
+        List<Map<String, Object>> series = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Double>> entry : seriesData.entrySet()) {
+            Map<String, Object> seriesItem = new HashMap<>();
+            seriesItem.put("name", entry.getKey());
+            seriesItem.put("type", "radar");
+            
+            List<Double> values = new ArrayList<>();
+            for (String indicator : indicatorList) {
+                values.add(entry.getValue().getOrDefault(indicator, 0.0));
+            }
+            seriesItem.put("data", values);
+            series.add(seriesItem);
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("indicators", indicatorsData);
+        result.put("series", series);
         
         return result;
     }
@@ -712,26 +919,7 @@ public class ReportController {
         return result;
     }
 
-    private String extractDatabaseName(String uri) {
-        try {
-            // 解析MongoDB URI，提取数据库名称
-            // 格式: mongodb://host:port/database
-            if (uri.contains("/")) {
-                String[] parts = uri.split("/");
-                if (parts.length > 3) {
-                    String lastPart = parts[parts.length - 1];
-                    // 移除可能的查询参数
-                    if (lastPart.contains("?")) {
-                        lastPart = lastPart.split("\\?")[0];
-                    }
-                    return lastPart;
-                }
-            }
-            return null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
+
 
     private String getUsernameFromToken(String auth) {
         if (auth == null || !auth.startsWith("Bearer ")) return null;
@@ -741,6 +929,27 @@ public class ReportController {
             return claims.getSubject();
         } catch (Exception e) {
             return null;
+        }
+    }
+    
+    private String getAggregationDisplayName(String aggregation) {
+        switch (aggregation) {
+            case "sum":
+                return "总和";
+            case "avg":
+                return "平均值";
+            case "count":
+                return "计数";
+            case "max":
+                return "最大值";
+            case "min":
+                return "最小值";
+            case "std":
+                return "标准差";
+            case "variance":
+                return "方差";
+            default:
+                return aggregation;
         }
     }
 } 

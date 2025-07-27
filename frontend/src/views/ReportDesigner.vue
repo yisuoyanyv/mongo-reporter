@@ -6,6 +6,19 @@
           <span>报表设计器</span>
           <div>
             <el-button @click="saveReport" type="primary">保存报表</el-button>
+            <el-dropdown @command="handleTemplate">
+              <el-button>
+                模板管理
+                <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="save">保存为模板</el-dropdown-item>
+                  <el-dropdown-item command="load">应用模板</el-dropdown-item>
+                  <el-dropdown-item command="list">查看模板</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <el-button @click="$router.push('/reports')">返回列表</el-button>
           </div>
         </div>
@@ -308,6 +321,38 @@
                 </el-form-item>
                 <el-form-item label="最大值">
                   <el-input-number v-model="widgetConfig.max" :min="0" />
+                </el-form-item>
+              </template>
+              
+              <template v-if="currentWidget?.name === 'funnel'">
+                <el-form-item label="名称字段">
+                  <el-select v-model="widgetConfig.nameField" placeholder="选择名称字段">
+                    <el-option v-for="field in fields" :key="field" :label="field" :value="field" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="数值字段">
+                  <el-select v-model="widgetConfig.valueField" placeholder="选择数值字段">
+                    <el-option v-for="field in fields" :key="field" :label="field" :value="field" />
+                  </el-select>
+                </el-form-item>
+              </template>
+              
+              <template v-if="currentWidget?.name === 'radar'">
+                <el-form-item label="名称字段">
+                  <el-select v-model="widgetConfig.nameField" placeholder="选择名称字段">
+                    <el-option v-for="field in fields" :key="field" :label="field" :value="field" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="数值字段">
+                  <el-select v-model="widgetConfig.valueField" placeholder="选择数值字段">
+                    <el-option v-for="field in fields" :key="field" :label="field" :value="field" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="系列字段">
+                  <el-select v-model="widgetConfig.seriesField" placeholder="选择系列字段（可选）">
+                    <el-option label="无" value="" />
+                    <el-option v-for="field in fields" :key="field" :label="field" :value="field" />
+                  </el-select>
                 </el-form-item>
               </template>
               
@@ -904,6 +949,60 @@ const getChartOption = async (element) => {
           }
           console.log('仪表盘配置:', option)
           return option
+        } else if (element.name === 'funnel') {
+          const option = {
+            ...baseOption,
+            series: [{
+              type: 'funnel',
+              left: '10%',
+              top: 60,
+              bottom: 60,
+              width: '80%',
+              height: '80%',
+              min: 0,
+              max: 100,
+              minSize: '0%',
+              maxSize: '100%',
+              sort: 'descending',
+              gap: 2,
+              label: {
+                show: element.config?.showLabel !== false,
+                position: 'inside'
+              },
+              labelLine: {
+                length: 10,
+                lineStyle: {
+                  width: 1,
+                  type: 'solid'
+                }
+              },
+              itemStyle: {
+                borderColor: '#fff',
+                borderWidth: 1
+              },
+              emphasis: {
+                label: {
+                  fontSize: 20
+                }
+              },
+              data: response.data.series
+            }]
+          }
+          console.log('漏斗图配置:', option)
+          return option
+        } else if (element.name === 'radar') {
+          const option = {
+            ...baseOption,
+            radar: {
+              indicator: response.data.indicators || []
+            },
+            series: response.data.series.map(series => ({
+              ...series,
+              label: { show: element.config?.showLabel !== false }
+            }))
+          }
+          console.log('雷达图配置:', option)
+          return option
         } else if (element.name === 'table') {
           // 表格组件不需要返回ECharts配置
           return null
@@ -981,6 +1080,75 @@ const getDefaultChartOption = (element) => {
       series: [{ 
         type: 'scatter', 
         data: [[10, 20], [15, 25], [20, 30], [25, 35], [30, 40]],
+        label: { show: element.config?.showLabel !== false }
+      }]
+    }
+  } else if (element.name === 'funnel') {
+    return {
+      ...baseOption,
+      series: [{
+        type: 'funnel',
+        left: '10%',
+        top: 60,
+        bottom: 60,
+        width: '80%',
+        height: '80%',
+        min: 0,
+        max: 100,
+        minSize: '0%',
+        maxSize: '100%',
+        sort: 'descending',
+        gap: 2,
+        label: {
+          show: element.config?.showLabel !== false,
+          position: 'inside'
+        },
+        labelLine: {
+          length: 10,
+          lineStyle: {
+            width: 1,
+            type: 'solid'
+          }
+        },
+        itemStyle: {
+          borderColor: '#fff',
+          borderWidth: 1
+        },
+        emphasis: {
+          label: {
+            fontSize: 20
+          }
+        },
+        data: [
+          { value: 100, name: '访问' },
+          { value: 80, name: '咨询' },
+          { value: 60, name: '订单' },
+          { value: 40, name: '付款' },
+          { value: 20, name: '成交' }
+        ]
+      }]
+    }
+  } else if (element.name === 'radar') {
+    return {
+      ...baseOption,
+      radar: {
+        indicator: [
+          { name: '销售', max: 100 },
+          { name: '管理', max: 100 },
+          { name: '技术', max: 100 },
+          { name: '客服', max: 100 },
+          { name: '研发', max: 100 },
+          { name: '市场', max: 100 }
+        ]
+      },
+      series: [{
+        type: 'radar',
+        data: [
+          {
+            value: [80, 70, 90, 85, 95, 75],
+            name: '能力评估'
+          }
+        ],
         label: { show: element.config?.showLabel !== false }
       }]
     }
@@ -1260,6 +1428,79 @@ const onTablePageSizeChange = (element) => {
 
 const onTableCurrentPageChange = (element) => {
   // 当前页改变时不需要特殊处理
+}
+
+const saveTemplate = () => {
+  const templateName = prompt('请输入模板名称：')
+  if (!templateName) return
+  
+  const template = {
+    name: templateName,
+    widgets: reportForm.value.widgets || [],
+    filters: reportForm.value.filters || [],
+    createdAt: new Date().toISOString()
+  }
+  
+  const templates = JSON.parse(localStorage.getItem('reportTemplates') || '[]')
+  templates.push(template)
+  localStorage.setItem('reportTemplates', JSON.stringify(templates))
+  
+  ElMessage.success('模板保存成功')
+}
+
+const loadTemplate = () => {
+  const templates = JSON.parse(localStorage.getItem('reportTemplates') || '[]')
+  if (templates.length === 0) {
+    ElMessage.warning('没有可用的模板')
+    return
+  }
+  
+  const templateNames = templates.map(t => t.name)
+  const selectedName = prompt('请选择模板：\n' + templateNames.join('\n'))
+  if (!selectedName) return
+  
+  const template = templates.find(t => t.name === selectedName)
+  if (!template) {
+    ElMessage.error('模板不存在')
+    return
+  }
+  
+  if (confirm('应用模板将覆盖当前配置，确定继续吗？')) {
+    reportForm.value.widgets = JSON.parse(JSON.stringify(template.widgets))
+    reportForm.value.filters = JSON.parse(JSON.stringify(template.filters))
+    ElMessage.success('模板应用成功')
+    debouncedRenderCharts()
+  }
+}
+
+const showTemplates = () => {
+  const templates = JSON.parse(localStorage.getItem('reportTemplates') || '[]')
+  if (templates.length === 0) {
+    ElMessage.warning('没有可用的模板')
+    return
+  }
+  
+  const templateList = templates.map(t => 
+    `${t.name} (创建于: ${new Date(t.createdAt).toLocaleString()})`
+  ).join('\n')
+  
+  alert('可用模板：\n' + templateList)
+}
+
+const handleTemplate = (command) => {
+  switch (command) {
+    case 'save':
+      saveTemplate()
+      break
+    case 'load':
+      loadTemplate()
+      break
+    case 'list':
+      showTemplates()
+      break
+    default:
+      ElMessage.warning('未知的模板操作')
+  }
 }
 
 onMounted(async () => {

@@ -9,8 +9,12 @@ public class DataSource {
     private String id;
     private String name;
     private String uri;
+    private String username;
+    private String password;
+    private String authDatabase;
     private String owner;
     private boolean isDefault;
+    private boolean useAuth;
 
     public DataSource() {}
 
@@ -19,6 +23,18 @@ public class DataSource {
         this.uri = uri;
         this.owner = owner;
         this.isDefault = isDefault;
+        this.useAuth = false;
+    }
+
+    public DataSource(String name, String uri, String username, String password, String authDatabase, String owner, boolean isDefault) {
+        this.name = name;
+        this.uri = uri;
+        this.username = username;
+        this.password = password;
+        this.authDatabase = authDatabase;
+        this.owner = owner;
+        this.isDefault = isDefault;
+        this.useAuth = true;
     }
 
     // Getters and Setters
@@ -46,6 +62,30 @@ public class DataSource {
         this.uri = uri;
     }
 
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public String getAuthDatabase() {
+        return authDatabase;
+    }
+
+    public void setAuthDatabase(String authDatabase) {
+        this.authDatabase = authDatabase;
+    }
+
     public String getOwner() {
         return owner;
     }
@@ -60,5 +100,35 @@ public class DataSource {
 
     public void setDefault(boolean isDefault) {
         this.isDefault = isDefault;
+    }
+
+    public boolean isUseAuth() {
+        return useAuth;
+    }
+
+    public void setUseAuth(boolean useAuth) {
+        this.useAuth = useAuth;
+    }
+
+    // 构建认证URI的方法
+    public String buildAuthenticatedUri() {
+        if (!useAuth || username == null || password == null) {
+            return uri;
+        }
+        
+        // 解析原始URI
+        String baseUri = uri;
+        if (baseUri.contains("@")) {
+            // 如果URI已经包含认证信息，先移除
+            int atIndex = baseUri.indexOf("@");
+            int slashIndex = baseUri.indexOf("//");
+            if (slashIndex >= 0) {
+                baseUri = baseUri.substring(0, slashIndex + 2) + baseUri.substring(atIndex + 1);
+            }
+        }
+        
+        // 添加认证信息
+        String authDb = authDatabase != null ? authDatabase : "admin";
+        return baseUri.replace("://", "://" + username + ":" + password + "@") + "?authSource=" + authDb;
     }
 } 

@@ -21,6 +21,12 @@
       <el-table v-else :data="dataSources" style="width:100%;margin-top:16px;">
         <el-table-column prop="name" label="名称" />
         <el-table-column prop="uri" label="连接字符串" />
+        <el-table-column label="认证" width="80">
+          <template #default="scope">
+            <el-tag v-if="scope.row.useAuth" type="warning" size="small">已启用</el-tag>
+            <el-tag v-else type="info" size="small">未启用</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="owner" label="创建者" />
         <el-table-column label="连接状态" width="120">
           <template #default="scope">
@@ -52,18 +58,36 @@
           <el-input v-model="form.name" placeholder="请输入数据源名称" />
         </el-form-item>
         <el-form-item label="连接字符串" prop="uri">
-          <div style="display: flex; gap: 8px;">
-            <el-input v-model="form.uri" placeholder="mongodb://localhost:27017/database" />
-            <el-button 
-              type="primary" 
-              size="small" 
-              @click="testFormConnection" 
-              :loading="testingConnection"
-              style="flex-shrink: 0;"
-            >
-              测试连接
-            </el-button>
-          </div>
+          <el-input v-model="form.uri" placeholder="mongodb://localhost:27017/database" />
+        </el-form-item>
+        
+        <el-form-item label="认证设置">
+          <el-switch v-model="form.useAuth" active-text="启用认证" />
+        </el-form-item>
+        
+        <template v-if="form.useAuth">
+          <el-form-item label="用户名" prop="username">
+            <el-input v-model="form.username" placeholder="请输入用户名" />
+          </el-form-item>
+          <el-form-item label="密码" prop="password">
+            <el-input v-model="form.password" type="password" placeholder="请输入密码" show-password />
+          </el-form-item>
+          <el-form-item label="认证数据库" prop="authDatabase">
+            <el-input v-model="form.authDatabase" placeholder="admin" />
+            <div style="font-size: 12px; color: #909399; margin-top: 4px;">
+              默认为 admin，如果用户在其他数据库中创建，请指定相应的数据库名
+            </div>
+          </el-form-item>
+        </template>
+        
+        <el-form-item>
+          <el-button 
+            type="primary" 
+            @click="testFormConnection" 
+            :loading="testingConnection"
+          >
+            测试连接
+          </el-button>
           <div v-if="connectionTestResult" style="margin-top: 8px;">
             <el-alert 
               :title="connectionTestResult.message" 
@@ -99,7 +123,11 @@ const connectionTestResult = ref(null)
 
 const form = ref({
   name: '',
-  uri: ''
+  uri: '',
+  useAuth: false,
+  username: '',
+  password: '',
+  authDatabase: 'admin'
 })
 
 const rules = {
@@ -109,6 +137,34 @@ const rules = {
   uri: [
     { required: true, message: '请输入连接字符串', trigger: 'blur' },
     { pattern: /^mongodb:\/\/.+/, message: '请输入有效的MongoDB连接字符串', trigger: 'blur' }
+  ],
+  username: [
+    { 
+      required: true, 
+      message: '请输入用户名', 
+      trigger: 'blur',
+      validator: (rule, value, callback) => {
+        if (form.value.useAuth && !value) {
+          callback(new Error('启用认证时，用户名为必填项'))
+        } else {
+          callback()
+        }
+      }
+    }
+  ],
+  password: [
+    { 
+      required: true, 
+      message: '请输入密码', 
+      trigger: 'blur',
+      validator: (rule, value, callback) => {
+        if (form.value.useAuth && !value) {
+          callback(new Error('启用认证时，密码为必填项'))
+        } else {
+          callback()
+        }
+      }
+    }
   ]
 }
 
@@ -141,7 +197,17 @@ const fetchDataSources = async () => {
 
 const testConnection = async (dataSource) => {
   try {
-    const response = await axios.post('/api/datasource/test', { uri: dataSource.uri })
+    const requestData = {
+      dataSource: {
+        uri: dataSource.uri,
+        useAuth: dataSource.useAuth || false,
+        username: dataSource.username || '',
+        password: dataSource.password || '',
+        authDatabase: dataSource.authDatabase || 'admin'
+      }
+    }
+    
+    const response = await axios.post('/api/datasource/test', requestData)
     const result = response.data
     
     // 更新数据源的连接状态
@@ -173,11 +239,29 @@ const testFormConnection = async () => {
     return
   }
   
+  // 如果启用了认证，验证必填字段
+  if (form.value.useAuth) {
+    if (!form.value.username || !form.value.password) {
+      ElMessage.warning('启用认证时，用户名和密码为必填项')
+      return
+    }
+  }
+  
   testingConnection.value = true
   connectionTestResult.value = null
   
   try {
-    const response = await axios.post('/api/datasource/test', { uri: form.value.uri })
+    const requestData = {
+      dataSource: {
+        uri: form.value.uri,
+        useAuth: form.value.useAuth,
+        username: form.value.username,
+        password: form.value.password,
+        authDatabase: form.value.authDatabase || 'admin'
+      }
+    }
+    
+    const response = await axios.post('/api/datasource/test', requestData)
     connectionTestResult.value = response.data
     
     if (response.data.success) {
@@ -199,14 +283,27 @@ const testFormConnection = async () => {
 
 const showAddDialog = () => {
   isEdit.value = false
-  form.value = { name: '', uri: '' }
+  form.value = { 
+    name: '', 
+    uri: '', 
+    useAuth: false, 
+    username: '', 
+    password: '', 
+    authDatabase: 'admin' 
+  }
   connectionTestResult.value = null
   dialogVisible.value = true
 }
 
 const editDataSource = (row) => {
   isEdit.value = true
-  form.value = { ...row }
+  form.value = { 
+    ...row,
+    useAuth: row.useAuth || false,
+    username: row.username || '',
+    password: row.password || '',
+    authDatabase: row.authDatabase || 'admin'
+  }
   connectionTestResult.value = null
   dialogVisible.value = true
 }

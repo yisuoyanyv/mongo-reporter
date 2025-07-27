@@ -5,8 +5,35 @@
         <div class="card-header">
           <span>{{ report.name }}</span>
           <div>
-            <el-button @click="exportImage">导出图片</el-button>
-            <el-button @click="exportPDF">导出PDF</el-button>
+            <el-button @click="refreshData" :loading="refreshing">
+              <el-icon><Refresh /></el-icon>
+              刷新数据
+            </el-button>
+            <el-dropdown @command="handleExport">
+              <el-button type="primary">
+                导出报表
+                <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="pdf">导出PDF</el-dropdown-item>
+                  <el-dropdown-item command="excel">导出Excel</el-dropdown-item>
+                  <el-dropdown-item command="image">导出图片</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+            <el-dropdown @command="handleShare">
+              <el-button>
+                分享
+                <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="link">复制链接</el-dropdown-item>
+                  <el-dropdown-item command="qrcode">生成二维码</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <el-button @click="$router.push('/reports')">返回列表</el-button>
           </div>
         </div>
@@ -94,6 +121,9 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import { Loading, Search } from '@element-plus/icons-vue'
+import html2canvas from 'html2canvas'
+import jsPDF from 'jspdf'
+import * as XLSX from 'xlsx'
 
 const route = useRoute()
 const report = ref({})
@@ -103,6 +133,7 @@ const tableData = ref({})
 const tableCurrentPage = ref({})
 const tablePageSize = ref({})
 const tableSearchText = ref({})
+const refreshing = ref(false)
 
 const loadReport = async (id) => {
   try {
@@ -299,6 +330,56 @@ const generateChartOption = async (widget) => {
             detail: { show: widget.showLabel !== false }
           }]
         }
+      } else if (widget.name === 'funnel') {
+        return {
+          ...baseOption,
+          series: [{
+            type: 'funnel',
+            left: '10%',
+            top: 60,
+            bottom: 60,
+            width: '80%',
+            height: '80%',
+            min: 0,
+            max: 100,
+            minSize: '0%',
+            maxSize: '100%',
+            sort: 'descending',
+            gap: 2,
+            label: {
+              show: widget.showLabel !== false,
+              position: 'inside'
+            },
+            labelLine: {
+              length: 10,
+              lineStyle: {
+                width: 1,
+                type: 'solid'
+              }
+            },
+            itemStyle: {
+              borderColor: '#fff',
+              borderWidth: 1
+            },
+            emphasis: {
+              label: {
+                fontSize: 20
+              }
+            },
+            data: response.data.series
+          }]
+        }
+      } else if (widget.name === 'radar') {
+        return {
+          ...baseOption,
+          radar: {
+            indicator: response.data.indicators || []
+          },
+          series: response.data.series.map(series => ({
+            ...series,
+            label: { show: widget.showLabel !== false }
+          }))
+        }
       }
     } else {
       console.warn('获取图表数据失败:', response.data.message)
@@ -368,6 +449,75 @@ const getDefaultChartOption = (widget) => {
       series: [{ 
         type: 'scatter', 
         data: [[10, 20], [15, 25], [20, 30], [25, 35], [30, 40]],
+        label: { show: widget.showLabel !== false }
+      }]
+    }
+  } else if (widget.name === 'funnel') {
+    return {
+      ...baseOption,
+      series: [{
+        type: 'funnel',
+        left: '10%',
+        top: 60,
+        bottom: 60,
+        width: '80%',
+        height: '80%',
+        min: 0,
+        max: 100,
+        minSize: '0%',
+        maxSize: '100%',
+        sort: 'descending',
+        gap: 2,
+        label: {
+          show: widget.showLabel !== false,
+          position: 'inside'
+        },
+        labelLine: {
+          length: 10,
+          lineStyle: {
+            width: 1,
+            type: 'solid'
+          }
+        },
+        itemStyle: {
+          borderColor: '#fff',
+          borderWidth: 1
+        },
+        emphasis: {
+          label: {
+            fontSize: 20
+          }
+        },
+        data: [
+          { value: 100, name: '访问' },
+          { value: 80, name: '咨询' },
+          { value: 60, name: '订单' },
+          { value: 40, name: '付款' },
+          { value: 20, name: '成交' }
+        ]
+      }]
+    }
+  } else if (widget.name === 'radar') {
+    return {
+      ...baseOption,
+      radar: {
+        indicator: [
+          { name: '销售', max: 100 },
+          { name: '管理', max: 100 },
+          { name: '技术', max: 100 },
+          { name: '客服', max: 100 },
+          { name: '研发', max: 100 },
+          { name: '市场', max: 100 }
+        ]
+      },
+      series: [{
+        type: 'radar',
+        data: [
+          {
+            value: [80, 70, 90, 85, 95, 75],
+            name: '能力评估'
+          }
+        ],
         label: { show: widget.showLabel !== false }
       }]
     }
@@ -531,8 +681,161 @@ const exportImage = () => {
   ElMessage.info('导出图片功能开发中...')
 }
 
-const exportPDF = () => {
-  ElMessage.info('导出PDF功能开发中...')
+const exportToPDF = async () => {
+  try {
+    ElMessage.info('正在生成PDF...')
+    
+    const reportContainer = document.querySelector('.report-viewer')
+    if (!reportContainer) {
+      ElMessage.error('未找到报表容器')
+      return
+    }
+    
+    const canvas = await html2canvas(reportContainer, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff'
+    })
+    
+    const imgData = canvas.toDataURL('image/png')
+    const pdf = new jsPDF('p', 'mm', 'a4')
+    const imgWidth = 210
+    const pageHeight = 295
+    const imgHeight = (canvas.height * imgWidth) / canvas.width
+    let heightLeft = imgHeight
+    
+    let position = 0
+    
+    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+    heightLeft -= pageHeight
+    
+    while (heightLeft >= 0) {
+      position = heightLeft - imgHeight
+      pdf.addPage()
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+      heightLeft -= pageHeight
+    }
+    
+    const fileName = `${report.value.name || '报表'}_${new Date().toISOString().slice(0, 10)}.pdf`
+    pdf.save(fileName)
+    ElMessage.success('PDF导出成功')
+  } catch (error) {
+    console.error('PDF导出失败:', error)
+    ElMessage.error('PDF导出失败')
+  }
+}
+
+const exportToExcel = async () => {
+  try {
+    ElMessage.info('正在生成Excel...')
+    
+    const workbook = XLSX.utils.book_new()
+    
+    // 导出表格数据
+    for (const widget of report.value.widgets || []) {
+      if (widget.name === 'table' && tableData.value[widget.id]) {
+        const data = getFilteredTableData(widget)
+        const worksheet = XLSX.utils.json_to_sheet(data)
+        const sheetName = widget.label || '数据明细'
+        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
+      }
+    }
+    
+    // 导出图表数据（如果有的话）
+    const chartData = []
+    for (const widget of report.value.widgets || []) {
+      if (widget.name !== 'table') {
+        // 这里可以添加图表数据的导出逻辑
+        chartData.push({
+          图表类型: getWidgetTitle(widget),
+          配置: JSON.stringify(widget.config || {})
+        })
+      }
+    }
+    
+    if (chartData.length > 0) {
+      const chartWorksheet = XLSX.utils.json_to_sheet(chartData)
+      XLSX.utils.book_append_sheet(workbook, chartWorksheet, '图表配置')
+    }
+    
+    const fileName = `${report.value.name || '报表'}_${new Date().toISOString().slice(0, 10)}.xlsx`
+    XLSX.writeFile(workbook, fileName)
+    ElMessage.success('Excel导出成功')
+  } catch (error) {
+    console.error('Excel导出失败:', error)
+    ElMessage.error('Excel导出失败')
+  }
+}
+
+const handleExport = (command) => {
+  switch (command) {
+    case 'pdf':
+      exportToPDF()
+      break
+    case 'excel':
+      exportToExcel()
+      break
+    case 'image':
+      exportImage()
+      break
+    default:
+      ElMessage.warning('未知的导出类型')
+  }
+}
+
+const refreshData = async () => {
+  try {
+    refreshing.value = true
+    ElMessage.info('正在刷新数据...')
+    
+    // 重新加载报表数据
+    await loadReport(route.params.id)
+    
+    // 重新渲染图表
+    await nextTick()
+    debouncedRenderCharts()
+    
+    ElMessage.success('数据刷新成功')
+  } catch (error) {
+    console.error('刷新数据失败:', error)
+    ElMessage.error('刷新数据失败')
+  } finally {
+    refreshing.value = false
+  }
+}
+
+const shareReport = () => {
+  const shareUrl = `${window.location.origin}/report/${route.params.id}`
+  
+  // 复制到剪贴板
+  navigator.clipboard.writeText(shareUrl).then(() => {
+    ElMessage.success('分享链接已复制到剪贴板')
+  }).catch(() => {
+    // 如果剪贴板API不可用，显示链接
+    prompt('分享链接：', shareUrl)
+  })
+}
+
+const generateQRCode = () => {
+  const shareUrl = `${window.location.origin}/report/${route.params.id}`
+  
+  // 这里可以集成二维码生成库
+  ElMessage.info('二维码功能开发中...')
+  console.log('分享链接:', shareUrl)
+}
+
+const handleShare = (command) => {
+  switch (command) {
+    case 'link':
+      shareReport()
+      break
+    case 'qrcode':
+      generateQRCode()
+      break
+    default:
+      ElMessage.warning('未知的分享类型')
+  }
 }
 
 onMounted(async () => {
@@ -565,6 +868,8 @@ onUnmounted(() => {
 <style scoped>
 .report-viewer {
   padding: 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
 }
 
 .card-header {
@@ -573,43 +878,54 @@ onUnmounted(() => {
   align-items: center;
 }
 
+.card-header span {
+  font-size: 18px;
+  font-weight: bold;
+  color: #2c3e50;
+}
+
 .report-description {
   margin-bottom: 20px;
-  padding: 10px;
-  background-color: #f5f7fa;
-  border-radius: 4px;
+  padding: 15px;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  border-radius: 8px;
+  border-left: 4px solid #409eff;
+  color: white;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 }
 
 .report-content {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+  gap: 25px;
+  margin-top: 20px;
 }
 
 .widget-container {
-  min-height: 300px;
+  min-height: 350px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.widget-container:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
 }
 
 .chart-container {
-  height: 300px;
+  height: 450px;
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .chart {
   width: 100%;
   height: 100%;
-}
-
-.table-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: #909399;
-  font-size: 14px;
+  border-radius: 8px;
 }
 
 .table-container {
-  position: relative;
+  height: 100%;
 }
 
 .table-wrapper {
@@ -617,9 +933,26 @@ onUnmounted(() => {
   width: 100%;
   background-color: #fff;
   border: 1px solid #ebeef5;
-  border-radius: 4px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
   overflow: hidden;
+  transition: box-shadow 0.3s ease;
+}
+
+.table-wrapper:hover {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+.table-search {
+  padding: 15px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 8px 8px 0 0;
+}
+
+.table-pagination {
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-top: 1px solid #ebeef5;
 }
 
 .table-loading {
@@ -627,9 +960,10 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
-  color: #909399;
-  font-size: 14px;
+  height: 200px;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  border-radius: 8px;
+  color: white;
 }
 
 .table-loading .is-loading {
@@ -638,11 +972,45 @@ onUnmounted(() => {
 }
 
 .table-info {
+  margin-top: 15px;
+  text-align: center;
+  color: #606266;
+  font-size: 13px;
   padding: 10px;
-  text-align: right;
-  font-size: 12px;
-  color: #909399;
-  background-color: #f5f7fa;
-  border-top: 1px solid #ebeef5;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+}
+
+/* 按钮样式优化 */
+.el-button {
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+.el-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* 卡片样式优化 */
+:deep(.el-card) {
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+:deep(.el-card:hover) {
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+:deep(.el-card__header) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 12px 12px 0 0;
+  padding: 15px 20px;
+}
+
+:deep(.el-card__body) {
+  padding: 20px;
 }
 </style> 
