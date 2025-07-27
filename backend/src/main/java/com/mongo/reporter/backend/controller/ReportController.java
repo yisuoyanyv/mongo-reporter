@@ -5,93 +5,742 @@ import com.mongo.reporter.backend.repository.ReportConfigRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.web.bind.annotation.*;
-import java.util.*;
-import org.springframework.web.bind.annotation.RequestHeader;
+
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import javax.crypto.SecretKey;
+
+import java.util.*;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.MongoIterable;
+import com.mongodb.MongoException;
 
 @RestController
 @RequestMapping("/api/report")
 public class ReportController {
+    
     @Autowired
     private MongoTemplate mongoTemplate;
-
+    
     @Autowired
     private ReportConfigRepository reportConfigRepository;
-
-    private final List<ReportConfig> reports = new ArrayList<>();
-    private final String jwtSecret = "mongo-reporter-secret";
-
-    @PostMapping("/save")
-    public ReportConfig saveReport(@RequestBody ReportConfig config, @RequestHeader("Authorization") String auth) {
-        String username = getUsernameFromToken(auth);
-        config.setOwner(username);
-        return reportConfigRepository.save(config);
-    }
-
-    @GetMapping("/list")
-    public List<ReportConfig> listReports(@RequestHeader("Authorization") String auth) {
-        String username = getUsernameFromToken(auth);
-        return reportConfigRepository.findAll().stream()
-            .filter(r -> username.equals(r.getOwner()) || r.isPublicShare())
-            .toList();
-    }
-
-    @DeleteMapping("/delete/{id}")
-    public void deleteReport(@PathVariable String id) {
-        reportConfigRepository.deleteById(id);
-    }
+    
+    private final String jwtSecret = "mongo-reporter-secret-key-256-bits-long";
+    private final SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes());
 
     @GetMapping("/collections")
-    public List<String> listCollections() {
-        return mongoTemplate.getCollectionNames().stream().toList();
+    public List<String> listCollectionsByUri(@RequestParam String uri) {
+        MongoClient mongoClient = null;
+        try {
+            mongoClient = MongoClients.create(uri);
+            
+            // 从URI中提取数据库名称
+            String databaseName = extractDatabaseName(uri);
+            if (databaseName == null) {
+                return new ArrayList<>();
+            }
+            
+            MongoDatabase database = mongoClient.getDatabase(databaseName);
+            MongoIterable<String> collectionNames = database.listCollectionNames();
+            
+            List<String> result = new ArrayList<>();
+            for (String name : collectionNames) {
+                result.add(name);
+            }
+            
+            return result;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new ArrayList<>();
+        } finally {
+            if (mongoClient != null) {
+                try {
+                    mongoClient.close();
+                } catch (Exception e) {
+                    // 忽略关闭时的异常
+                }
+            }
+        }
+    }
+
+    @GetMapping("/fields")
+    public List<String> listFieldsByUriAndCollection(@RequestParam String uri, @RequestParam String collection) {
+        MongoClient mongoClient = null;
+        try {
+            mongoClient = MongoClients.create(uri);
+            
+            // 从URI中提取数据库名称
+            String databaseName = extractDatabaseName(uri);
+            if (databaseName == null) {
+                return new ArrayList<>();
+            }
+            
+            MongoDatabase database = mongoClient.getDatabase(databaseName);
+            List<Map> rawData = database.getCollection(collection, Map.class).find().limit(1).into(new ArrayList<>());
+            
+            if (rawData.isEmpty()) {
+                return new ArrayList<>();
+            }
+            Map firstDoc = rawData.get(0);
+            return new ArrayList<>(firstDoc.keySet());
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new ArrayList<>();
+        } finally {
+            if (mongoClient != null) {
+                try {
+                    mongoClient.close();
+                } catch (Exception e) {
+                    // 忽略关闭时的异常
+                }
+            }
+        }
     }
 
     @GetMapping("/data")
-    public List<Map<String, Object>> getData(@RequestParam String collection) {
-        return mongoTemplate.findAll(Map.class, collection);
-    }
-
-    @GetMapping("/get/{id}")
-    public ReportConfig getReport(@PathVariable String id) {
-        return reportConfigRepository.findById(id).orElse(null);
-    }
-
-    @PostMapping("/collections")
-    public List<String> listCollectionsByUri(@RequestBody Map<String, String> body) {
-        String uri = body.get("uri");
-        MongoTemplate temp = new MongoTemplate(new com.mongodb.client.MongoClient() {
-            @Override
-            public void close() {}
-            @Override
-            public com.mongodb.client.MongoDatabase getDatabase(String databaseName) {
-                return com.mongodb.client.MongoClients.create(uri).getDatabase(databaseName);
+    public List<Map<String, Object>> getData(@RequestParam String uri, @RequestParam String collection, 
+                                            @RequestParam(defaultValue = "100") int limit) {
+        MongoClient mongoClient = null;
+        try {
+            mongoClient = MongoClients.create(uri);
+            
+            // 从URI中提取数据库名称
+            String databaseName = extractDatabaseName(uri);
+            if (databaseName == null) {
+                return new ArrayList<>();
             }
-            @Override
-            public com.mongodb.MongoClientSettings getSettings() { return null; }
-            @Override
-            public com.mongodb.client.MongoClient startSession() { return null; }
-            @Override
-            public com.mongodb.client.MongoClient startSession(com.mongodb.ClientSessionOptions options) { return null; }
-        }, "temp");
-        return temp.getCollectionNames().stream().toList();
+            
+            MongoDatabase database = mongoClient.getDatabase(databaseName);
+            List<Map> rawData = database.getCollection(collection, Map.class).find().limit(limit).into(new ArrayList<>());
+            
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Map item : rawData) {
+                Map<String, Object> processedItem = new HashMap<>(item);
+                // 处理ObjectId字段，将_id转换为字符串
+                if (processedItem.containsKey("_id")) {
+                    Object idValue = processedItem.get("_id");
+                    if (idValue != null) {
+                        processedItem.put("_id", idValue.toString());
+                    }
+                }
+                result.add(processedItem);
+            }
+            return result;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new ArrayList<>();
+        } finally {
+            if (mongoClient != null) {
+                try {
+                    mongoClient.close();
+                } catch (Exception e) {
+                    // 忽略关闭时的异常
+                }
+            }
+        }
     }
 
-    @PostMapping("/fields")
-    public Set<String> listFieldsByUriAndCollection(@RequestBody Map<String, String> body) {
-        String uri = body.get("uri");
-        String collection = body.get("collection");
-        MongoTemplate temp = new MongoTemplate(com.mongodb.client.MongoClients.create(uri), "temp");
-        List<Map> docs = temp.findAll(Map.class, collection);
-        Set<String> fields = new HashSet<>();
-        for (Map doc : docs) fields.addAll(doc.keySet());
-        return fields;
+    @GetMapping("/configs")
+    public List<ReportConfig> listReports(@RequestHeader("Authorization") String auth) {
+        String username = getUsernameFromToken(auth);
+        if (username != null) {
+            return reportConfigRepository.findByOwnerOrPublicShareTrue(username);
+        }
+        return reportConfigRepository.findByPublicShareTrue();
+    }
+
+    @GetMapping("/configs/{id}")
+    public ReportConfig getReport(@PathVariable String id, @RequestHeader(value = "Authorization", required = false) String auth) {
+        ReportConfig report = reportConfigRepository.findById(id).orElse(null);
+        if (report == null) {
+            return null;
+        }
+        
+        // 如果是公开分享的报表，任何人都可以查看
+        if (report.isPublicShare()) {
+            return report;
+        }
+        
+        // 如果有认证信息，检查是否是所有者
+        if (auth != null) {
+            String username = getUsernameFromToken(auth);
+            if (username != null && username.equals(report.getOwner())) {
+                return report;
+            }
+        }
+        
+        // 开发环境：如果owner为null，允许访问（用于测试）
+        if (report.getOwner() == null) {
+            return report;
+        }
+        
+        // 默认情况下，如果没有认证或不是所有者，返回null
+        return null;
+    }
+
+    @PostMapping("/configs")
+    public ReportConfig saveReport(@RequestBody ReportConfig report, @RequestHeader("Authorization") String auth) {
+        String username = getUsernameFromToken(auth);
+        if (username != null) {
+            report.setOwner(username);
+        }
+        
+        if (report.getCreatedAt() == null) {
+            report.setCreatedAt(new Date().toString());
+        }
+        report.setUpdatedAt(new Date().toString());
+        
+        return reportConfigRepository.save(report);
+    }
+
+    @PutMapping("/configs/{id}")
+    public ReportConfig updateReport(@PathVariable String id, @RequestBody ReportConfig report, @RequestHeader("Authorization") String auth) {
+        String username = getUsernameFromToken(auth);
+        ReportConfig existing = reportConfigRepository.findById(id).orElse(null);
+        if (existing != null && (existing.isPublicShare() || username.equals(existing.getOwner()))) {
+            report.setId(id);
+            if (username != null) {
+                report.setOwner(username);
+            }
+            // 保留原有的创建时间
+            if (existing.getCreatedAt() != null) {
+                report.setCreatedAt(existing.getCreatedAt());
+            } else if (report.getCreatedAt() == null) {
+                report.setCreatedAt(new Date().toString());
+            }
+            report.setUpdatedAt(new Date().toString());
+            return reportConfigRepository.save(report);
+        }
+        throw new IllegalArgumentException("Invalid report or permission denied");
+    }
+
+    @DeleteMapping("/configs/{id}")
+    public void deleteReport(@PathVariable String id, @RequestHeader("Authorization") String auth) {
+        String username = getUsernameFromToken(auth);
+        ReportConfig report = reportConfigRepository.findById(id).orElse(null);
+        if (report != null && (report.isPublicShare() || username.equals(report.getOwner()))) {
+            reportConfigRepository.deleteById(id);
+        }
+    }
+
+    @PostMapping("/chart-data")
+    public Map<String, Object> getChartData(@RequestBody Map<String, Object> request, 
+                                           @RequestHeader(value = "Authorization", required = false) String auth) {
+        String uri = (String) request.get("uri");
+        String collection = (String) request.get("collection");
+        Map<String, Object> widget = (Map<String, Object>) request.get("widget");
+        List<Map<String, Object>> filters = (List<Map<String, Object>>) request.get("filters");
+        
+        if (uri == null || collection == null || widget == null) {
+            return Map.of("success", false, "message", "缺少必要参数");
+        }
+        
+        MongoClient mongoClient = null;
+        try {
+            mongoClient = MongoClients.create(uri);
+            
+            // 从URI中提取数据库名称
+            String databaseName = extractDatabaseName(uri);
+            if (databaseName == null) {
+                return Map.of("success", false, "message", "无法解析数据库名称");
+            }
+            
+            MongoDatabase database = mongoClient.getDatabase(databaseName);
+            
+            // 应用过滤条件
+            List<Map> rawData = database.getCollection(collection, Map.class).find().into(new ArrayList<>());
+            List<Map<String, Object>> data = new ArrayList<>();
+            for (Map item : rawData) {
+                data.add((Map<String, Object>) item);
+            }
+            
+            // 应用过滤条件
+            if (filters != null && !filters.isEmpty()) {
+                data = applyFilters(data, filters);
+            }
+            
+            String chartType = (String) widget.get("name");
+            if ("line".equals(chartType) || "bar".equals(chartType)) {
+                return processLineBarChart(data, widget);
+            } else if ("pie".equals(chartType)) {
+                return processPieChart(data, widget);
+            } else if ("scatter".equals(chartType)) {
+                return processScatterChart(data, widget);
+            } else if ("gauge".equals(chartType)) {
+                return processGaugeChart(data, widget);
+            } else if ("table".equals(chartType)) {
+                return processTableData(data, widget);
+            } else {
+                return Map.of("success", false, "message", "不支持的图表类型: " + chartType);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Map.of("success", false, "message", "获取数据失败: " + e.getMessage());
+        } finally {
+            if (mongoClient != null) {
+                try {
+                    mongoClient.close();
+                } catch (Exception e) {
+                    // 忽略关闭时的异常
+                }
+            }
+        }
+    }
+
+    private List<Map<String, Object>> applyFilters(List<Map<String, Object>> data, List<Map<String, Object>> filters) {
+        List<Map<String, Object>> filteredData = new ArrayList<>();
+        
+        for (Map<String, Object> item : data) {
+            boolean include = true;
+            
+            for (Map<String, Object> filter : filters) {
+                String field = (String) filter.get("field");
+                String operator = (String) filter.get("operator");
+                Object value = filter.get("value");
+                String logic = (String) filter.get("logic");
+                
+                if (field == null || operator == null || value == null) {
+                    continue;
+                }
+                
+                Object fieldValue = item.get(field);
+                boolean conditionMet = evaluateCondition(fieldValue, operator, value);
+                
+                if ("or".equals(logic)) {
+                    include = include || conditionMet;
+                } else {
+                    include = include && conditionMet;
+                }
+            }
+            
+            if (include) {
+                filteredData.add(item);
+            }
+        }
+        
+        return filteredData;
+    }
+    
+    private boolean evaluateCondition(Object fieldValue, String operator, Object filterValue) {
+        if (fieldValue == null) {
+            return false;
+        }
+        
+        String fieldStr = String.valueOf(fieldValue);
+        String filterStr = String.valueOf(filterValue);
+        
+        switch (operator) {
+            case "eq":
+                return fieldStr.equals(filterStr);
+            case "ne":
+                return !fieldStr.equals(filterStr);
+            case "gt":
+                try {
+                    double fieldNum = Double.parseDouble(fieldStr);
+                    double filterNum = Double.parseDouble(filterStr);
+                    return fieldNum > filterNum;
+                } catch (NumberFormatException e) {
+                    return false;
+                }
+            case "gte":
+                try {
+                    double fieldNum = Double.parseDouble(fieldStr);
+                    double filterNum = Double.parseDouble(filterStr);
+                    return fieldNum >= filterNum;
+                } catch (NumberFormatException e) {
+                    return false;
+                }
+            case "lt":
+                try {
+                    double fieldNum = Double.parseDouble(fieldStr);
+                    double filterNum = Double.parseDouble(filterStr);
+                    return fieldNum < filterNum;
+                } catch (NumberFormatException e) {
+                    return false;
+                }
+            case "lte":
+                try {
+                    double fieldNum = Double.parseDouble(fieldStr);
+                    double filterNum = Double.parseDouble(filterStr);
+                    return fieldNum <= filterNum;
+                } catch (NumberFormatException e) {
+                    return false;
+                }
+            case "in":
+                return fieldStr.contains(filterStr);
+            case "nin":
+                return !fieldStr.contains(filterStr);
+            case "regex":
+                return fieldStr.matches(filterStr);
+            default:
+                return false;
+        }
+    }
+
+    private Map<String, Object> processLineBarChart(List<Map<String, Object>> data, Map<String, Object> widget) {
+        String xField = (String) widget.get("xField");
+        String yField = (String) widget.get("yField");
+        String seriesField = (String) widget.get("seriesField");
+        Boolean enableStats = (Boolean) widget.get("enableStats");
+        String aggregation = (String) widget.get("aggregation");
+        String groupBy = (String) widget.get("groupBy");
+        String sortBy = (String) widget.get("sortBy");
+        String sortOrder = (String) widget.get("sortOrder");
+        Integer limit = (Integer) widget.get("limit");
+        
+        // 如果启用了统计功能
+        if (enableStats != null && enableStats && aggregation != null) {
+            return processAggregatedChart(data, widget, "line".equals(widget.get("name")) ? "line" : "bar");
+        }
+        
+        Map<String, Map<String, Double>> seriesData = new HashMap<>();
+        Set<String> xAxisValues = new LinkedHashSet<>();
+        
+        for (Map<String, Object> item : data) {
+            String xValue = String.valueOf(item.get(xField));
+            String seriesValue = seriesField != null ? String.valueOf(item.get(seriesField)) : "default";
+            Number yValue = (Number) item.get(yField);
+            
+            xAxisValues.add(xValue);
+            seriesData.computeIfAbsent(seriesValue, k -> new HashMap<>()).put(xValue, yValue != null ? yValue.doubleValue() : 0.0);
+        }
+        
+        List<String> xAxis = new ArrayList<>(xAxisValues);
+        List<Map<String, Object>> series = new ArrayList<>();
+        
+        for (Map.Entry<String, Map<String, Double>> entry : seriesData.entrySet()) {
+            Map<String, Object> seriesItem = new HashMap<>();
+            seriesItem.put("name", entry.getKey());
+            seriesItem.put("type", widget.get("name"));
+            seriesItem.put("smooth", true);
+            
+            List<Double> seriesValues = new ArrayList<>();
+            for (String xValue : xAxis) {
+                seriesValues.add(entry.getValue().getOrDefault(xValue, 0.0));
+            }
+            seriesItem.put("data", seriesValues);
+            
+            series.add(seriesItem);
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("xAxis", xAxis);
+        result.put("series", series);
+        
+        return result;
+    }
+
+    private Map<String, Object> processAggregatedChart(List<Map<String, Object>> data, Map<String, Object> widget, String chartType) {
+        String groupBy = (String) widget.get("groupBy");
+        String aggregation = (String) widget.get("aggregation");
+        String valueField = (String) widget.get("valueField");
+        String sortBy = (String) widget.get("sortBy");
+        String sortOrder = (String) widget.get("sortOrder");
+        Integer limit = (Integer) widget.get("limit");
+        
+        Map<String, List<Number>> groupedData = new HashMap<>();
+        
+        for (Map<String, Object> item : data) {
+            String groupKey = groupBy != null ? String.valueOf(item.get(groupBy)) : "总计";
+            Number value = (Number) item.get(valueField);
+            
+            if (value != null) {
+                groupedData.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(value);
+            }
+        }
+        
+        List<Map<String, Object>> aggregatedData = new ArrayList<>();
+        for (Map.Entry<String, List<Number>> entry : groupedData.entrySet()) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("name", entry.getKey());
+            item.put("value", calculateAggregation(entry.getValue(), aggregation));
+            aggregatedData.add(item);
+        }
+        
+        // 排序
+        if (sortBy != null && !sortBy.isEmpty()) {
+            aggregatedData.sort((a, b) -> {
+                double aValue = ((Number) a.get("value")).doubleValue();
+                double bValue = ((Number) b.get("value")).doubleValue();
+                return "desc".equals(sortOrder) ? Double.compare(bValue, aValue) : Double.compare(aValue, bValue);
+            });
+        }
+        
+        // 限制数量
+        if (limit != null && limit > 0 && aggregatedData.size() > limit) {
+            aggregatedData = aggregatedData.subList(0, limit);
+        }
+        
+        List<String> xAxis = aggregatedData.stream().map(item -> (String) item.get("name")).collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
+        List<Number> yAxis = aggregatedData.stream().map(item -> (Number) item.get("value")).collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
+        
+        Map<String, Object> series = new HashMap<>();
+        series.put("name", aggregation + "(" + valueField + ")");
+        series.put("type", chartType);
+        series.put("data", yAxis);
+        if ("line".equals(chartType)) {
+            series.put("smooth", true);
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("xAxis", xAxis);
+        result.put("series", List.of(series));
+        
+        return result;
+    }
+    
+    private double calculateAggregation(List<Number> values, String aggregation) {
+        if (values.isEmpty()) return 0.0;
+        
+        switch (aggregation) {
+            case "sum":
+                return values.stream().mapToDouble(Number::doubleValue).sum();
+            case "avg":
+                return values.stream().mapToDouble(Number::doubleValue).average().orElse(0.0);
+            case "count":
+                return values.size();
+            case "max":
+                return values.stream().mapToDouble(Number::doubleValue).max().orElse(0.0);
+            case "min":
+                return values.stream().mapToDouble(Number::doubleValue).min().orElse(0.0);
+            case "std":
+                double avg = values.stream().mapToDouble(Number::doubleValue).average().orElse(0.0);
+                double variance = values.stream().mapToDouble(v -> Math.pow(v.doubleValue() - avg, 2)).average().orElse(0.0);
+                return Math.sqrt(variance);
+            case "variance":
+                double mean = values.stream().mapToDouble(Number::doubleValue).average().orElse(0.0);
+                return values.stream().mapToDouble(v -> Math.pow(v.doubleValue() - mean, 2)).average().orElse(0.0);
+            default:
+                return 0.0;
+        }
+    }
+
+    private Map<String, Object> processPieChart(List<Map<String, Object>> data, Map<String, Object> widget) {
+        String nameField = (String) widget.get("nameField");
+        String valueField = (String) widget.get("valueField");
+        Boolean enableStats = (Boolean) widget.get("enableStats");
+        String aggregation = (String) widget.get("aggregation");
+        String sortBy = (String) widget.get("sortBy");
+        String sortOrder = (String) widget.get("sortOrder");
+        Integer limit = (Integer) widget.get("limit");
+        
+        Map<String, Double> aggregatedData = new HashMap<>();
+        
+        for (Map<String, Object> item : data) {
+            String name = String.valueOf(item.get(nameField));
+            Number value = (Number) item.get(valueField);
+            
+            if (enableStats != null && enableStats && "count".equals(aggregation)) {
+                aggregatedData.merge(name, 1.0, Double::sum);
+            } else {
+                aggregatedData.merge(name, value != null ? value.doubleValue() : 0.0, Double::sum);
+            }
+        }
+        
+        List<Map<String, Object>> seriesData = new ArrayList<>();
+        for (Map.Entry<String, Double> entry : aggregatedData.entrySet()) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("name", entry.getKey());
+            item.put("value", entry.getValue());
+            seriesData.add(item);
+        }
+        
+        // 排序
+        if (sortBy != null && !sortBy.isEmpty()) {
+            seriesData.sort((a, b) -> {
+                double aValue = ((Number) a.get("value")).doubleValue();
+                double bValue = ((Number) b.get("value")).doubleValue();
+                return "desc".equals(sortOrder) ? Double.compare(bValue, aValue) : Double.compare(aValue, bValue);
+            });
+        }
+        
+        // 限制数量
+        if (limit != null && limit > 0 && seriesData.size() > limit) {
+            seriesData = seriesData.subList(0, limit);
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("series", seriesData);
+        
+        return result;
+    }
+    
+    private Map<String, Object> processScatterChart(List<Map<String, Object>> data, Map<String, Object> widget) {
+        String xField = (String) widget.get("xField");
+        String yField = (String) widget.get("yField");
+        String sizeField = (String) widget.get("sizeField");
+        String seriesField = (String) widget.get("seriesField");
+        
+        Map<String, List<List<Object>>> seriesData = new HashMap<>();
+        
+        for (Map<String, Object> item : data) {
+            Number xValue = (Number) item.get(xField);
+            Number yValue = (Number) item.get(yField);
+            Number sizeValue = sizeField != null ? (Number) item.get(sizeField) : 10;
+            String seriesValue = seriesField != null ? String.valueOf(item.get(seriesField)) : "default";
+            
+            if (xValue != null && yValue != null) {
+                List<Object> point = new ArrayList<>();
+                point.add(xValue.doubleValue());
+                point.add(yValue.doubleValue());
+                if (sizeField != null && sizeValue != null) {
+                    point.add(sizeValue.doubleValue());
+                }
+                
+                seriesData.computeIfAbsent(seriesValue, k -> new ArrayList<>()).add(point);
+            }
+        }
+        
+        List<Map<String, Object>> series = new ArrayList<>();
+        for (Map.Entry<String, List<List<Object>>> entry : seriesData.entrySet()) {
+            Map<String, Object> seriesItem = new HashMap<>();
+            seriesItem.put("name", entry.getKey());
+            seriesItem.put("type", "scatter");
+            seriesItem.put("data", entry.getValue());
+            series.add(seriesItem);
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("series", series);
+        
+        return result;
+    }
+    
+    private Map<String, Object> processGaugeChart(List<Map<String, Object>> data, Map<String, Object> widget) {
+        String valueField = (String) widget.get("valueField");
+        Number min = (Number) widget.get("min");
+        Number max = (Number) widget.get("max");
+        
+        double totalValue = 0.0;
+        int count = 0;
+        
+        for (Map<String, Object> item : data) {
+            Number value = (Number) item.get(valueField);
+            if (value != null) {
+                totalValue += value.doubleValue();
+                count++;
+            }
+        }
+        
+        double avgValue = count > 0 ? totalValue / count : 0.0;
+        double minValue = min != null ? min.doubleValue() : 0.0;
+        double maxValue = max != null ? max.doubleValue() : 100.0;
+        
+        List<Map<String, Object>> seriesData = new ArrayList<>();
+        Map<String, Object> item = new HashMap<>();
+        item.put("name", "平均值");
+        item.put("value", avgValue);
+        seriesData.add(item);
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("series", seriesData);
+        result.put("min", minValue);
+        result.put("max", maxValue);
+        
+        return result;
+    }
+    
+    private Map<String, Object> processTableData(List<Map<String, Object>> data, Map<String, Object> widget) {
+        String sortBy = (String) widget.get("sortBy");
+        String sortOrder = (String) widget.get("sortOrder");
+        Integer limit = (Integer) widget.get("limit");
+        List<String> displayFields = (List<String>) widget.get("displayFields");
+        
+        List<Map<String, Object>> tableData = new ArrayList<>(data);
+        
+        // 处理ObjectId字段，将_id转换为字符串
+        tableData = tableData.stream().map(item -> {
+            Map<String, Object> processedItem = new HashMap<>(item);
+            if (processedItem.containsKey("_id")) {
+                Object idValue = processedItem.get("_id");
+                if (idValue != null) {
+                    processedItem.put("_id", idValue.toString());
+                }
+            }
+            return processedItem;
+        }).collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
+        
+        // 字段过滤
+        if (displayFields != null && !displayFields.isEmpty()) {
+            tableData = tableData.stream().map(item -> {
+                Map<String, Object> filteredItem = new HashMap<>();
+                for (String field : displayFields) {
+                    if (item.containsKey(field)) {
+                        filteredItem.put(field, item.get(field));
+                    }
+                }
+                return filteredItem;
+            }).collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
+        }
+        
+        // 排序
+        if (sortBy != null && !sortBy.isEmpty()) {
+            tableData.sort((a, b) -> {
+                Object aValue = a.get(sortBy);
+                Object bValue = b.get(sortBy);
+                
+                if (aValue instanceof Number && bValue instanceof Number) {
+                    double aNum = ((Number) aValue).doubleValue();
+                    double bNum = ((Number) bValue).doubleValue();
+                    return "desc".equals(sortOrder) ? Double.compare(bNum, aNum) : Double.compare(aNum, bNum);
+                } else {
+                    String aStr = String.valueOf(aValue);
+                    String bStr = String.valueOf(bValue);
+                    return "desc".equals(sortOrder) ? bStr.compareTo(aStr) : aStr.compareTo(bStr);
+                }
+            });
+        }
+        
+        // 限制数量
+        if (limit != null && limit > 0 && tableData.size() > limit) {
+            tableData = tableData.subList(0, limit);
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("data", tableData);
+        result.put("total", data.size());
+        
+        return result;
+    }
+
+    private String extractDatabaseName(String uri) {
+        try {
+            // 解析MongoDB URI，提取数据库名称
+            // 格式: mongodb://host:port/database
+            if (uri.contains("/")) {
+                String[] parts = uri.split("/");
+                if (parts.length > 3) {
+                    String lastPart = parts[parts.length - 1];
+                    // 移除可能的查询参数
+                    if (lastPart.contains("?")) {
+                        lastPart = lastPart.split("\\?")[0];
+                    }
+                    return lastPart;
+                }
+            }
+            return null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private String getUsernameFromToken(String auth) {
         if (auth == null || !auth.startsWith("Bearer ")) return null;
         String token = auth.substring(7);
-        Claims claims = Jwts.parser().setSigningKey(jwtSecret).parseClaimsJws(token).getBody();
-        return claims.getSubject();
+        try {
+            Claims claims = Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token).getBody();
+            return claims.getSubject();
+        } catch (Exception e) {
+            return null;
+        }
     }
 } 

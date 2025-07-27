@@ -1,46 +1,126 @@
 package com.mongo.reporter.backend.controller;
 
+import com.mongo.reporter.backend.model.DataSource;
+import com.mongo.reporter.backend.repository.DataSourceRepository;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import javax.crypto.SecretKey;
 import java.util.*;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+import com.mongodb.MongoException;
 
 @RestController
 @RequestMapping("/api/datasource")
 public class DataSourceController {
-    // 内存模拟数据源配置，后续可替换为数据库持久化
-    private final List<Map<String, String>> dataSources = new ArrayList<>();
+    
+    @Autowired
+    private DataSourceRepository dataSourceRepository;
+    
+    private final String jwtSecret = "mongo-reporter-secret-key-256-bits-long";
+    private final SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes());
 
     @GetMapping
-    public List<Map<String, String>> list() {
-        return dataSources;
+    public List<DataSource> list() {
+        // 返回所有数据源，包括默认的和用户创建的
+        return dataSourceRepository.findAll();
     }
 
-    @GetMapping("/{index}")
-    public Map<String, String> get(@PathVariable int index) {
-        if (index >= 0 && index < dataSources.size()) {
-            return dataSources.get(index);
+    @GetMapping("/user")
+    public List<DataSource> listByUser(@RequestHeader("Authorization") String auth) {
+        String username = getUsernameFromToken(auth);
+        if (username != null) {
+            return dataSourceRepository.findByOwnerOrIsDefaultTrue(username);
         }
-        return null;
+        return dataSourceRepository.findByIsDefaultTrue();
+    }
+
+    @GetMapping("/{id}")
+    public DataSource get(@PathVariable String id) {
+        return dataSourceRepository.findById(id).orElse(null);
     }
 
     @PostMapping
-    public Map<String, String> add(@RequestBody Map<String, String> config) {
-        dataSources.add(config);
-        return config;
+    public DataSource add(@RequestBody DataSource dataSource, @RequestHeader("Authorization") String auth) {
+        String username = getUsernameFromToken(auth);
+        if (username != null) {
+            dataSource.setOwner(username);
+        }
+        return dataSourceRepository.save(dataSource);
     }
 
-    @DeleteMapping("/{index}")
-    public void delete(@PathVariable int index) {
-        if (index >= 0 && index < dataSources.size()) {
-            dataSources.remove(index);
+    @PostMapping("/test")
+    public Map<String, Object> testConnection(@RequestBody Map<String, String> request) {
+        String uri = request.get("uri");
+        Map<String, Object> result = new HashMap<>();
+        
+        if (uri == null || uri.trim().isEmpty()) {
+            result.put("success", false);
+            result.put("message", "连接字符串不能为空");
+            return result;
+        }
+        
+        MongoClient mongoClient = null;
+        try {
+            mongoClient = MongoClients.create(uri);
+            // 尝试获取数据库列表来验证连接
+            mongoClient.listDatabaseNames().first();
+            
+            result.put("success", true);
+            result.put("message", "连接成功");
+        } catch (MongoException e) {
+            result.put("success", false);
+            result.put("message", "连接失败: " + e.getMessage());
+        } catch (Exception e) {
+            result.put("success", false);
+            result.put("message", "连接失败: " + e.getMessage());
+        } finally {
+            if (mongoClient != null) {
+                try {
+                    mongoClient.close();
+                } catch (Exception e) {
+                    // 忽略关闭时的异常
+                }
+            }
+        }
+        
+        return result;
+    }
+
+    @DeleteMapping("/{id}")
+    public void delete(@PathVariable String id, @RequestHeader("Authorization") String auth) {
+        String username = getUsernameFromToken(auth);
+        DataSource dataSource = dataSourceRepository.findById(id).orElse(null);
+        if (dataSource != null && (dataSource.isDefault() || username.equals(dataSource.getOwner()))) {
+            dataSourceRepository.deleteById(id);
         }
     }
 
-    @PutMapping("/{index}")
-    public Map<String, String> update(@PathVariable int index, @RequestBody Map<String, String> config) {
-        if (index >= 0 && index < dataSources.size()) {
-            dataSources.set(index, config);
-            return config;
+    @PutMapping("/{id}")
+    public DataSource update(@PathVariable String id, @RequestBody DataSource dataSource, @RequestHeader("Authorization") String auth) {
+        String username = getUsernameFromToken(auth);
+        DataSource existing = dataSourceRepository.findById(id).orElse(null);
+        if (existing != null && (existing.isDefault() || username.equals(existing.getOwner()))) {
+            dataSource.setId(id);
+            if (username != null) {
+                dataSource.setOwner(username);
+            }
+            return dataSourceRepository.save(dataSource);
         }
-        throw new IllegalArgumentException("Invalid index");
+        throw new IllegalArgumentException("Invalid data source or permission denied");
+    }
+
+    private String getUsernameFromToken(String auth) {
+        if (auth == null || !auth.startsWith("Bearer ")) return null;
+        String token = auth.substring(7);
+        try {
+            Claims claims = Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token).getBody();
+            return claims.getSubject();
+        } catch (Exception e) {
+            return null;
+        }
     }
 } 

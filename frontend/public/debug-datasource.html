@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据源调试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f7fa;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .success { border-color: #67c23a; background: #f0f9ff; }
+        .error { border-color: #f56c6c; background: #fef0f0; }
+        .info { border-color: #409eff; background: #f0f9ff; }
+        button {
+            background: #409EFF;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #337ecc; }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success-result { background: #f0f9ff; border: 1px solid #b3d8ff; }
+        .error-result { background: #fff5f5; border: 1px solid #fed7d7; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th { background-color: #f2f2f2; }
+        .status {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status.success { background: #67c23a; color: white; }
+        .status.error { background: #f56c6c; color: white; }
+        .status.warning { background: #e6a23c; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>数据源调试页面</h1>
+        
+        <div class="section info">
+            <h3>1. 系统状态检查</h3>
+            <div id="systemStatus">检查中...</div>
+        </div>
+        
+        <div class="section">
+            <h3>2. 数据源API测试</h3>
+            <button onclick="testDataSourceApi()">测试数据源API</button>
+            <button onclick="testWithAuth()">测试带认证的API</button>
+            <button onclick="clearStorage()">清除存储</button>
+            <div id="apiResult" class="result"></div>
+        </div>
+        
+        <div class="section">
+            <h3>3. 数据源列表</h3>
+            <button onclick="loadDataSources()">加载数据源</button>
+            <button onclick="loadDataSourcesWithAuth()">带认证加载数据源</button>
+            <div id="dataSourceList"></div>
+        </div>
+        
+        <div class="section">
+            <h3>4. 前端页面测试</h3>
+            <button onclick="testFrontendPage()">测试前端页面</button>
+            <button onclick="openDataSourcePage()">打开数据源管理页面</button>
+            <div id="frontendResult" class="result"></div>
+        </div>
+        
+        <div class="section">
+            <h3>5. 网络请求分析</h3>
+            <button onclick="analyzeNetwork()">分析网络请求</button>
+            <div id="networkResult" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        function showResult(elementId, message, isError = false) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = 'result ' + (isError ? 'error-result' : 'success-result');
+        }
+
+        function updateSystemStatus() {
+            const token = localStorage.getItem('token');
+            const statusDiv = document.getElementById('systemStatus');
+            
+            let statusHtml = '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">';
+            
+            // 检查token
+            if (token) {
+                statusHtml += '<div><span class="status success">✅ 已登录</span> Token存在</div>';
+            } else {
+                statusHtml += '<div><span class="status error">❌ 未登录</span> Token不存在</div>';
+            }
+            
+            // 检查后端连接
+            fetch('/api/datasource')
+                .then(response => {
+                    if (response.ok) {
+                        statusHtml += '<div><span class="status success">✅ 后端连接正常</span> API可访问</div>';
+                    } else {
+                        statusHtml += '<div><span class="status error">❌ 后端连接异常</span> API返回' + response.status + '</div>';
+                    }
+                })
+                .catch(error => {
+                    statusHtml += '<div><span class="status error">❌ 后端连接失败</span> ' + error.message + '</div>';
+                })
+                .finally(() => {
+                    statusHtml += '</div>';
+                    statusDiv.innerHTML = statusHtml;
+                });
+        }
+
+        async function testDataSourceApi() {
+            try {
+                const response = await fetch('/api/datasource');
+                const data = await response.json();
+                showResult('apiResult', `✅ 数据源API测试成功!\n状态码: ${response.status}\n数据源数量: ${data.length}\n响应: ${JSON.stringify(data, null, 2)}`);
+            } catch (error) {
+                showResult('apiResult', `❌ 数据源API测试失败: ${error.message}`, true);
+            }
+        }
+
+        async function testWithAuth() {
+            const token = localStorage.getItem('token');
+            
+            if (!token) {
+                showResult('apiResult', '❌ 请先登录', true);
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/datasource', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                showResult('apiResult', `✅ 带认证的数据源API测试成功!\n状态码: ${response.status}\n数据源数量: ${data.length}\n响应: ${JSON.stringify(data, null, 2)}`);
+            } catch (error) {
+                showResult('apiResult', `❌ 带认证的数据源API测试失败: ${error.message}`, true);
+            }
+        }
+
+        async function loadDataSources() {
+            try {
+                const response = await fetch('/api/datasource');
+                const data = await response.json();
+                
+                if (data.length === 0) {
+                    document.getElementById('dataSourceList').innerHTML = '<p>暂无数据源</p>';
+                    return;
+                }
+                
+                let tableHtml = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>名称</th>
+                                <th>连接字符串</th>
+                                <th>创建者</th>
+                                <th>默认</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                data.forEach(ds => {
+                    tableHtml += `
+                        <tr>
+                            <td>${ds.id}</td>
+                            <td>${ds.name}</td>
+                            <td>${ds.uri}</td>
+                            <td>${ds.owner || '未知'}</td>
+                            <td>${ds.default ? '是' : '否'}</td>
+                        </tr>
+                    `;
+                });
+                
+                tableHtml += '</tbody></table>';
+                document.getElementById('dataSourceList').innerHTML = tableHtml;
+                
+            } catch (error) {
+                showResult('dataSourceList', `❌ 加载数据源失败: ${error.message}`, true);
+            }
+        }
+
+        async function loadDataSourcesWithAuth() {
+            const token = localStorage.getItem('token');
+            
+            if (!token) {
+                showResult('dataSourceList', '❌ 请先登录', true);
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/datasource', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                if (data.length === 0) {
+                    document.getElementById('dataSourceList').innerHTML = '<p>暂无数据源</p>';
+                    return;
+                }
+                
+                let tableHtml = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>名称</th>
+                                <th>连接字符串</th>
+                                <th>创建者</th>
+                                <th>默认</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                data.forEach(ds => {
+                    tableHtml += `
+                        <tr>
+                            <td>${ds.id}</td>
+                            <td>${ds.name}</td>
+                            <td>${ds.uri}</td>
+                            <td>${ds.owner || '未知'}</td>
+                            <td>${ds.default ? '是' : '否'}</td>
+                        </tr>
+                    `;
+                });
+                
+                tableHtml += '</tbody></table>';
+                document.getElementById('dataSourceList').innerHTML = tableHtml;
+                
+            } catch (error) {
+                showResult('dataSourceList', `❌ 带认证加载数据源失败: ${error.message}`, true);
+            }
+        }
+
+        function testFrontendPage() {
+            try {
+                // 测试是否能访问前端页面
+                const testUrl = '/datasources';
+                showResult('frontendResult', `✅ 前端页面测试\n尝试访问: ${testUrl}\n请检查浏览器控制台是否有错误`);
+                
+                // 尝试打开页面
+                window.open(testUrl, '_blank');
+            } catch (error) {
+                showResult('frontendResult', `❌ 前端页面测试失败: ${error.message}`, true);
+            }
+        }
+
+        function openDataSourcePage() {
+            window.location.href = '/datasources';
+        }
+
+        function analyzeNetwork() {
+            const analysis = {
+                currentUrl: window.location.href,
+                userAgent: navigator.userAgent,
+                localStorage: {
+                    token: localStorage.getItem('token') ? '存在' : '不存在',
+                    username: localStorage.getItem('username') || '不存在'
+                },
+                cookies: document.cookie || '无',
+                timestamp: new Date().toISOString()
+            };
+            
+            showResult('networkResult', `网络分析结果:\n${JSON.stringify(analysis, null, 2)}`);
+        }
+
+        function clearStorage() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            showResult('apiResult', '✅ 已清除localStorage');
+            updateSystemStatus();
+        }
+
+        // 页面加载时更新状态
+        window.onload = function() {
+            updateSystemStatus();
+        };
+    </script>
+</body>
+</html> 

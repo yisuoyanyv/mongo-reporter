@@ -1,7 +1,9 @@
 <template>
   <div class="login-container">
     <el-card class="login-card">
-      <div slot="header" class="login-title">登录 Mongo Reporter</div>
+      <template #header>
+        <div class="login-title">登录 MongoReporter</div>
+      </template>
       <el-form :model="form" @submit.native.prevent="onLogin">
         <el-form-item label="用户名">
           <el-input v-model="form.username" />
@@ -15,33 +17,62 @@
         <el-form-item>
           <el-link @click="goRegister">没有账号？注册</el-link>
         </el-form-item>
+        <el-form-item style="text-align:center;color:#999;font-size:12px;">
+          <div>测试账号：admin / admin123</div>
+        </el-form-item>
       </el-form>
     </el-card>
   </div>
 </template>
+
 <script setup>
 import { ref } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
-const form = ref({ username: '', password: '' })
+import { ElMessage } from 'element-plus'
+
+const form = ref({ username: 'admin', password: 'admin123' })
 const router = useRouter()
-function onLogin() {
-  axios.post('/api/auth/login', form.value).then(res => {
-    if (res.data.token) {
-      localStorage.setItem('token', res.data.token)
-      localStorage.setItem('username', res.data.username)
-      router.push('/designer')
+
+const onLogin = async () => {
+  try {
+    const response = await axios.post('/api/auth/login', form.value)
+    if (response.data.token) {
+      localStorage.setItem('token', response.data.token)
+      localStorage.setItem('username', response.data.username)
+      ElMessage.success('登录成功')
+      router.push('/reports')
     } else {
-      window.$message?.error(res.data.error || '登录失败')
+      ElMessage.error(response.data.error || '登录失败')
     }
-  })
+  } catch (error) {
+    console.error('登录失败:', error)
+    ElMessage.error('登录失败，请检查用户名和密码')
+  }
 }
-function goRegister() {
+
+const goRegister = () => {
   router.push('/register')
 }
 </script>
+
 <style scoped>
-.login-container { display:flex;justify-content:center;align-items:center;height:100vh;background:#f5f7fa; }
-.login-card { width:340px; }
-.login-title { font-size:22px;font-weight:bold;text-align:center;margin-bottom:16px; }
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: #f5f7fa;
+}
+
+.login-card {
+  width: 340px;
+}
+
+.login-title {
+  font-size: 22px;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 16px;
+}
 </style> 

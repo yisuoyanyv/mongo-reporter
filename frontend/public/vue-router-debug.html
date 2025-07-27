@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vue Router 深度调试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f7fa;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .success { border-color: #67c23a; background: #f0f9ff; }
+        .error { border-color: #f56c6c; background: #fef0f0; }
+        .info { border-color: #409eff; background: #f0f9ff; }
+        button {
+            background: #409EFF;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #337ecc; }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success-result { background: #f0f9ff; border: 1px solid #b3d8ff; }
+        .error-result { background: #fff5f5; border: 1px solid #fed7d7; }
+        .warning-result { background: #fdf6ec; border: 1px solid #f5dab1; }
+        .route-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .route-card {
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #f9f9f9;
+        }
+        .route-card.success { border-color: #67c23a; background: #f0f9ff; }
+        .route-card.error { border-color: #f56c6c; background: #fef0f0; }
+        .route-card.warning { border-color: #e6a23c; background: #fdf6ec; }
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-left: 5px;
+        }
+        .status-success { background: #67c23a; color: white; }
+        .status-error { background: #f56c6c; color: white; }
+        .status-warning { background: #e6a23c; color: white; }
+        .status-info { background: #409eff; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Vue Router 深度调试工具</h1>
+        
+        <div class="section info">
+            <h3>1. 系统状态</h3>
+            <div id="systemStatus">检查中...</div>
+        </div>
+        
+        <div class="section">
+            <h3>2. Vue Router 路由测试</h3>
+            <button onclick="testVueRouter()">测试Vue Router</button>
+            <button onclick="testAllRoutes()">测试所有路由</button>
+            <button onclick="clearCache()">清除缓存</button>
+            <div id="routerResult" class="result"></div>
+        </div>
+        
+        <div class="section">
+            <h3>3. 路由详情</h3>
+            <div id="routeDetails" class="route-grid"></div>
+        </div>
+        
+        <div class="section">
+            <h3>4. 组件加载测试</h3>
+            <button onclick="testComponentLoad()">测试组件加载</button>
+            <button onclick="testDataSourceComponent()">测试数据源组件</button>
+            <div id="componentResult" class="result"></div>
+        </div>
+        
+        <div class="section">
+            <h3>5. 浏览器环境</h3>
+            <button onclick="showBrowserInfo()">显示浏览器信息</button>
+            <button onclick="showConsoleErrors()">显示控制台错误</button>
+            <div id="browserResult" class="result"></div>
+        </div>
+        
+        <div class="section">
+            <h3>6. 直接访问测试</h3>
+            <button onclick="openRoute('/datasources')">打开数据源页面</button>
+            <button onclick="openRoute('/reports')">打开报表页面</button>
+            <button onclick="openRoute('/login')">打开登录页面</button>
+            <div id="directAccessResult" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        const routes = [
+            { path: '/', name: '首页', redirect: '/login' },
+            { path: '/login', name: '登录' },
+            { path: '/register', name: '注册' },
+            { path: '/reports', name: '报表管理', requiresAuth: true },
+            { path: '/designer', name: '报表设计器', requiresAuth: true },
+            { path: '/datasources', name: '数据源管理', requiresAuth: true },
+            { path: '/viewer/:id', name: '报表查看器', requiresAuth: true }
+        ];
+
+        function showResult(elementId, message, type = 'success') {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = 'result ' + type + '-result';
+        }
+
+        function updateSystemStatus() {
+            const statusDiv = document.getElementById('systemStatus');
+            const currentUrl = window.location.href;
+            const userAgent = navigator.userAgent;
+            const timestamp = new Date().toLocaleString();
+            
+            statusDiv.innerHTML = `
+                <div><strong>当前URL:</strong> ${currentUrl}</div>
+                <div><strong>时间:</strong> ${timestamp}</div>
+                <div><strong>用户代理:</strong> ${userAgent}</div>
+                <div><strong>Vue版本:</strong> ${window.Vue ? window.Vue.version : '未检测到'}</div>
+                <div><strong>Vue Router版本:</strong> ${window.$router ? '已加载' : '未检测到'}</div>
+            `;
+        }
+
+        async function testVueRouter() {
+            let result = 'Vue Router 测试结果:\n\n';
+            
+            try {
+                // 测试路由访问
+                const response = await fetch('/datasources');
+                const status = response.status;
+                const contentType = response.headers.get('content-type');
+                
+                result += `✅ 路由访问测试:\n`;
+                result += `  状态码: ${status}\n`;
+                result += `  内容类型: ${contentType}\n`;
+                result += `  响应长度: ${response.headers.get('content-length') || '未知'}\n\n`;
+                
+                if (status === 200 && contentType && contentType.includes('text/html')) {
+                    result += `✅ 路由正常工作\n`;
+                } else {
+                    result += `⚠️ 路由可能有问题\n`;
+                }
+                
+                // 测试Vue Router实例
+                if (window.$router) {
+                    result += `✅ Vue Router实例存在\n`;
+                    result += `  当前路由: ${window.$router.currentRoute.value.path}\n`;
+                    result += `  路由数量: ${window.$router.getRoutes().length}\n`;
+                } else {
+                    result += `❌ Vue Router实例不存在\n`;
+                }
+                
+            } catch (error) {
+                result += `❌ 路由测试失败: ${error.message}\n`;
+            }
+            
+            showResult('routerResult', result);
+        }
+
+        async function testAllRoutes() {
+            let result = '所有路由测试结果:\n\n';
+            
+            for (const route of routes) {
+                try {
+                    const response = await fetch(route.path);
+                    const status = response.status;
+                    const contentType = response.headers.get('content-type');
+                    
+                    if (status === 200 && contentType && contentType.includes('text/html')) {
+                        result += `✅ ${route.path} - ${route.name}: 正常\n`;
+                    } else {
+                        result += `⚠️ ${route.path} - ${route.name}: 异常 (${status})\n`;
+                    }
+                } catch (error) {
+                    result += `❌ ${route.path} - ${route.name}: 错误 (${error.message})\n`;
+                }
+            }
+            
+            showResult('routerResult', result);
+        }
+
+        function updateRouteDetails() {
+            const routeDetailsDiv = document.getElementById('routeDetails');
+            routeDetailsDiv.innerHTML = '';
+            
+            routes.forEach(route => {
+                const routeCard = document.createElement('div');
+                routeCard.className = 'route-card';
+                
+                const status = route.requiresAuth ? '需要认证' : '公开';
+                const statusClass = route.requiresAuth ? 'warning' : 'success';
+                
+                routeCard.innerHTML = `
+                    <div><strong>${route.name}</strong></div>
+                    <div>路径: ${route.path}</div>
+                    <div>状态: <span class="status-badge status-${statusClass}">${status}</span></div>
+                    <button onclick="testSpecificRoute('${route.path}')" style="margin-top: 10px;">测试</button>
+                `;
+                
+                routeDetailsDiv.appendChild(routeCard);
+            });
+        }
+
+        async function testSpecificRoute(path) {
+            try {
+                const response = await fetch(path);
+                const status = response.status;
+                const contentType = response.headers.get('content-type');
+                
+                let result = `路由 ${path} 测试结果:\n`;
+                result += `状态码: ${status}\n`;
+                result += `内容类型: ${contentType}\n`;
+                result += `响应头: ${JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2)}\n`;
+                
+                if (status === 200 && contentType && contentType.includes('text/html')) {
+                    result += '\n✅ 路由正常工作';
+                    showResult('routerResult', result, 'success');
+                } else {
+                    result += '\n⚠️ 路由可能有问题';
+                    showResult('routerResult', result, 'warning');
+                }
+            } catch (error) {
+                showResult('routerResult', `❌ 路由 ${path} 测试失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function testComponentLoad() {
+            let result = '组件加载测试:\n\n';
+            
+            try {
+                // 测试动态导入
+                const module = await import('/src/views/DataSourceManager.vue');
+                result += `✅ DataSourceManager组件动态导入成功\n`;
+                result += `  模块类型: ${typeof module}\n`;
+                result += `  默认导出: ${module.default ? '存在' : '不存在'}\n`;
+            } catch (error) {
+                result += `❌ DataSourceManager组件动态导入失败: ${error.message}\n`;
+            }
+            
+            showResult('componentResult', result);
+        }
+
+        async function testDataSourceComponent() {
+            let result = '数据源组件测试:\n\n';
+            
+            try {
+                // 测试组件文件是否存在
+                const response = await fetch('/src/views/DataSourceManager.vue');
+                if (response.ok) {
+                    result += `✅ DataSourceManager.vue 文件存在\n`;
+                } else {
+                    result += `❌ DataSourceManager.vue 文件不存在 (${response.status})\n`;
+                }
+                
+                // 测试组件语法
+                const content = await response.text();
+                if (content.includes('<template>') && content.includes('<script')) {
+                    result += `✅ 组件文件格式正确\n`;
+                } else {
+                    result += `⚠️ 组件文件格式可能有问题\n`;
+                }
+                
+            } catch (error) {
+                result += `❌ 组件测试失败: ${error.message}\n`;
+            }
+            
+            showResult('componentResult', result);
+        }
+
+        function showBrowserInfo() {
+            const info = {
+                userAgent: navigator.userAgent,
+                platform: navigator.platform,
+                language: navigator.language,
+                cookieEnabled: navigator.cookieEnabled,
+                onLine: navigator.onLine,
+                localStorage: typeof(Storage) !== "undefined" ? "支持" : "不支持",
+                sessionStorage: typeof(Storage) !== "undefined" ? "支持" : "不支持",
+                currentUrl: window.location.href,
+                referrer: document.referrer,
+                timestamp: new Date().toISOString(),
+                vueVersion: window.Vue ? window.Vue.version : '未检测到',
+                vueRouterVersion: window.$router ? '已加载' : '未检测到'
+            };
+            
+            showResult('browserResult', `浏览器信息:\n${JSON.stringify(info, null, 2)}`);
+        }
+
+        function showConsoleErrors() {
+            // 这个方法需要在主应用中调用
+            showResult('browserResult', '请在主应用的控制台中查看错误信息\n\n建议:\n1. 打开浏览器开发者工具\n2. 查看Console标签\n3. 查看Network标签\n4. 刷新页面观察错误');
+        }
+
+        function openRoute(path) {
+            const resultDiv = document.getElementById('directAccessResult');
+            resultDiv.textContent = `正在打开: ${path}`;
+            
+            setTimeout(() => {
+                window.open(path, '_blank');
+                resultDiv.textContent = `已在新窗口打开: ${path}\n请检查新窗口是否有Vue Router错误`;
+            }, 100);
+        }
+
+        function clearCache() {
+            if ('caches' in window) {
+                caches.keys().then(names => {
+                    names.forEach(name => {
+                        caches.delete(name);
+                    });
+                });
+            }
+            
+            localStorage.clear();
+            sessionStorage.clear();
+            
+            showResult('routerResult', '✅ 缓存已清除\nlocalStorage 和 sessionStorage 已清空\n请刷新页面重新测试');
+        }
+
+        // 页面加载时初始化
+        window.onload = function() {
+            updateSystemStatus();
+            updateRouteDetails();
+            showResult('routerResult', 'Vue Router 调试工具已加载\n点击按钮开始测试...');
+        };
+    </script>
+</body>
+</html> 

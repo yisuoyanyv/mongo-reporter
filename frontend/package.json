@@ -19,6 +19,7 @@
     "vue-draggable-next": "^2.2.1",
     "vue-echarts": "^7.0.3",
     "vue-router": "^4.0.0",
+    "vuedraggable": "^4.1.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

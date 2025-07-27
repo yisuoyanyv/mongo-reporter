@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MongoReporter 调试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f7fa;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .success { border-color: #67c23a; background: #f0f9ff; }
+        .error { border-color: #f56c6c; background: #fef0f0; }
+        .info { border-color: #409eff; background: #f0f9ff; }
+        button {
+            background: #409EFF;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #337ecc; }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success-result { background: #f0f9ff; border: 1px solid #b3d8ff; }
+        .error-result { background: #fff5f5; border: 1px solid #fed7d7; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>MongoReporter 调试页面</h1>
+        
+        <div class="section info">
+            <h3>1. 当前状态</h3>
+            <div id="currentStatus">检查中...</div>
+        </div>
+        
+        <div class="section">
+            <h3>2. 登录测试</h3>
+            <button onclick="testLogin()">测试登录</button>
+            <button onclick="clearStorage()">清除存储</button>
+            <div id="loginResult" class="result"></div>
+        </div>
+        
+        <div class="section">
+            <h3>3. API测试</h3>
+            <button onclick="testReportApi()">测试报表API</button>
+            <button onclick="testDataSourceApi()">测试数据源API</button>
+            <div id="apiResult" class="result"></div>
+        </div>
+        
+        <div class="section">
+            <h3>4. 手动登录</h3>
+            <input type="text" id="username" placeholder="用户名" value="admin" style="padding: 8px; margin: 5px;">
+            <input type="password" id="password" placeholder="密码" value="admin123" style="padding: 8px; margin: 5px;">
+            <button onclick="manualLogin()">手动登录</button>
+            <div id="manualLoginResult" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        function showResult(elementId, message, isError = false) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = 'result ' + (isError ? 'error-result' : 'success-result');
+        }
+
+        function updateStatus() {
+            const token = localStorage.getItem('token');
+            const username = localStorage.getItem('username');
+            const statusDiv = document.getElementById('currentStatus');
+            
+            if (token) {
+                statusDiv.innerHTML = `
+                    <strong>✅ 已登录</strong><br>
+                    用户名: ${username || '未知'}<br>
+                    Token: ${token.substring(0, 50)}...<br>
+                    <button onclick="clearStorage()">清除登录</button>
+                `;
+                statusDiv.parentElement.className = 'section success';
+            } else {
+                statusDiv.innerHTML = `
+                    <strong>❌ 未登录</strong><br>
+                    请点击下方按钮进行登录测试
+                `;
+                statusDiv.parentElement.className = 'section error';
+            }
+        }
+
+        async function testLogin() {
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: 'admin', password: 'admin123' })
+                });
+                
+                const data = await response.json();
+                
+                if (data.token) {
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('username', data.username);
+                    showResult('loginResult', `✅ 登录成功!\n用户名: ${data.username}\nToken: ${data.token.substring(0, 50)}...`);
+                    updateStatus();
+                } else {
+                    showResult('loginResult', `❌ 登录失败: ${data.error || '未知错误'}`, true);
+                }
+            } catch (error) {
+                showResult('loginResult', `❌ 登录错误: ${error.message}`, true);
+            }
+        }
+
+        async function testReportApi() {
+            const token = localStorage.getItem('token');
+            
+            if (!token) {
+                showResult('apiResult', '❌ 请先登录', true);
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/report/configs', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                const data = await response.json();
+                showResult('apiResult', `✅ 报表API测试成功!\n状态码: ${response.status}\n响应: ${JSON.stringify(data, null, 2)}`);
+            } catch (error) {
+                showResult('apiResult', `❌ 报表API测试失败: ${error.message}`, true);
+            }
+        }
+
+        async function testDataSourceApi() {
+            try {
+                const response = await fetch('/api/datasource');
+                const data = await response.json();
+                showResult('apiResult', `✅ 数据源API测试成功!\n状态码: ${response.status}\n响应: ${JSON.stringify(data, null, 2)}`);
+            } catch (error) {
+                showResult('apiResult', `❌ 数据源API测试失败: ${error.message}`, true);
+            }
+        }
+
+        async function manualLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.token) {
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('username', data.username);
+                    showResult('manualLoginResult', `✅ 手动登录成功!\n用户名: ${data.username}\nToken: ${data.token.substring(0, 50)}...`);
+                    updateStatus();
+                } else {
+                    showResult('manualLoginResult', `❌ 手动登录失败: ${data.error || '未知错误'}`, true);
+                }
+            } catch (error) {
+                showResult('manualLoginResult', `❌ 手动登录错误: ${error.message}`, true);
+            }
+        }
+
+        function clearStorage() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            showResult('loginResult', '✅ 已清除localStorage');
+            updateStatus();
+        }
+
+        // 页面加载时更新状态
+        window.onload = function() {
+            updateStatus();
+        };
+    </script>
+</body>
+</html> 

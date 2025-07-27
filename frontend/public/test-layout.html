@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>布局测试页面</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+        }
+        
+        #app {
+            width: 100%;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            background: #f5f7fa;
+        }
+        
+        .header {
+            background: #fff;
+            box-shadow: 0 1px 4px #eee;
+            padding: 0 20px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        
+        .main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .test-content {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #67c23a;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h2 style="color: #409EFF; margin: 0;">MongoReporter 布局测试</h2>
+            <div>
+                <span style="margin-right: 10px;">测试用户</span>
+                <button onclick="testScroll()">测试滚动</button>
+            </div>
+        </div>
+        
+        <div class="main">
+            <div class="test-content">
+                <h3>布局测试页面</h3>
+                <p>这个页面用于测试布局是否正确显示。</p>
+                <p>如果页面能够全屏显示，说明布局修复成功。</p>
+            </div>
+            
+            <!-- 生成大量内容来测试滚动 -->
+            <div id="content-list"></div>
+        </div>
+    </div>
+    
+    <div class="status">✅ 布局正常</div>
+    
+    <script>
+        // 生成测试内容
+        const contentList = document.getElementById('content-list');
+        for (let i = 1; i <= 20; i++) {
+            const div = document.createElement('div');
+            div.className = 'test-content';
+            div.innerHTML = `
+                <h4>测试内容 ${i}</h4>
+                <p>这是第 ${i} 个测试内容块，用于验证页面滚动是否正常工作。</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+            `;
+            contentList.appendChild(div);
+        }
+        
+        function testScroll() {
+            const main = document.querySelector('.main');
+            main.scrollTo({
+                top: main.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
+        
+        // 检查页面尺寸
+        function checkLayout() {
+            const app = document.getElementById('app');
+            const status = document.querySelector('.status');
+            
+            if (app.offsetWidth === window.innerWidth && app.offsetHeight === window.innerHeight) {
+                status.textContent = '✅ 布局正常 - 全屏显示';
+                status.style.background = '#67c23a';
+            } else {
+                status.textContent = '❌ 布局异常 - 未全屏';
+                status.style.background = '#f56c6c';
+            }
+        }
+        
+        window.addEventListener('resize', checkLayout);
+        checkLayout();
+    </script>
+</body>
+</html> 

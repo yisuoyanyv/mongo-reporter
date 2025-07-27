@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简单数据源测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f7fa;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #409EFF;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #337ecc; }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            background: #f0f9ff;
+            border: 1px solid #b3d8ff;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .error {
+            background: #fff5f5;
+            border: 1px solid #fed7d7;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>简单数据源测试</h1>
+        
+        <div>
+            <button onclick="testApi()">测试API</button>
+            <button onclick="loadData()">加载数据</button>
+            <button onclick="openMainApp()">打开主应用</button>
+        </div>
+        
+        <div id="result" class="result" style="display: none;"></div>
+        <div id="dataTable"></div>
+    </div>
+
+    <script>
+        function showResult(message, isError = false) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = message;
+            resultDiv.className = 'result' + (isError ? ' error' : '');
+            resultDiv.style.display = 'block';
+        }
+
+        async function testApi() {
+            try {
+                const response = await fetch('/api/datasource');
+                const data = await response.json();
+                showResult(`✅ API测试成功!\n状态码: ${response.status}\n数据源数量: ${data.length}\n响应: ${JSON.stringify(data, null, 2)}`);
+            } catch (error) {
+                showResult(`❌ API测试失败: ${error.message}`, true);
+            }
+        }
+
+        async function loadData() {
+            try {
+                const response = await fetch('/api/datasource');
+                const data = await response.json();
+                
+                if (data.length === 0) {
+                    document.getElementById('dataTable').innerHTML = '<p>暂无数据源</p>';
+                    return;
+                }
+                
+                let tableHtml = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>名称</th>
+                                <th>连接字符串</th>
+                                <th>创建者</th>
+                                <th>默认</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                data.forEach(ds => {
+                    tableHtml += `
+                        <tr>
+                            <td>${ds.id}</td>
+                            <td>${ds.name}</td>
+                            <td>${ds.uri}</td>
+                            <td>${ds.owner || '未知'}</td>
+                            <td>${ds.default ? '是' : '否'}</td>
+                        </tr>
+                    `;
+                });
+                
+                tableHtml += '</tbody></table>';
+                document.getElementById('dataTable').innerHTML = tableHtml;
+                showResult(`✅ 数据加载成功! 共${data.length}个数据源`);
+                
+            } catch (error) {
+                showResult(`❌ 数据加载失败: ${error.message}`, true);
+            }
+        }
+
+        function openMainApp() {
+            window.open('/datasources', '_blank');
+        }
+
+        // 页面加载时自动测试API
+        window.onload = function() {
+            testApi();
+        };
+    </script>
+</body>
+</html> 

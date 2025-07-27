@@ -4,10 +4,12 @@ import com.mongo.reporter.backend.model.User;
 import com.mongo.reporter.backend.repository.UserRepository;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import javax.crypto.SecretKey;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -18,7 +20,8 @@ public class AuthController {
     @Autowired
     private UserRepository userRepository;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
-    private final String jwtSecret = "mongo-reporter-secret";
+    private final String jwtSecret = "mongo-reporter-secret-key-256-bits-long";
+    private final SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes());
 
     @PostMapping("/register")
     public Map<String, Object> register(@RequestBody User user) {
@@ -40,7 +43,7 @@ public class AuthController {
                     .claim("role", dbUser.getRole())
                     .setIssuedAt(new Date())
                     .setExpiration(new Date(System.currentTimeMillis() + 86400000))
-                    .signWith(SignatureAlgorithm.HS256, jwtSecret)
+                    .signWith(key, SignatureAlgorithm.HS256)
                     .compact();
             res.put("token", token);
             res.put("username", dbUser.getUsername());
