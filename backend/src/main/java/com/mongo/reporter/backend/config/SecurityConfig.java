@@ -30,6 +30,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/report/chart-data").permitAll()
                 .requestMatchers("/api/report/configs").permitAll()
                 .requestMatchers("/api/report/configs/**").permitAll()
+                .requestMatchers("/api/users/**").permitAll()
+                .requestMatchers("/api/settings/**").permitAll()
                 .anyRequest().authenticated()
             );
         return http.build();
