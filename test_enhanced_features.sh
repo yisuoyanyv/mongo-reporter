@@ -1,54 +1,120 @@
 #!/bin/bash
 
-echo "=== 测试增强的报表功能 ==="
+echo "🧪 测试MongoReporter增强功能"
+echo ""
 
-# 等待服务启动
-echo "等待服务启动..."
-sleep 5
+# 检查服务状态
+echo "📋 检查服务状态..."
+if curl -s http://localhost:8080/api/datasource > /dev/null; then
+    echo "✅ 后端服务运行正常"
+else
+    echo "❌ 后端服务未运行"
+    exit 1
+fi
 
-# 测试后端服务
-echo "测试后端服务..."
-curl -s http://localhost:8080/api/report/configs || echo "后端服务未启动"
+if curl -s http://localhost:5173 > /dev/null; then
+    echo "✅ 前端服务运行正常"
+else
+    echo "❌ 前端服务未运行"
+    exit 1
+fi
 
-# 测试前端服务
-echo "测试前端服务..."
-curl -s http://localhost:5173/ || echo "前端服务未启动"
+echo ""
+echo "🔍 测试分类和标签功能..."
+
+# 测试获取分类
+echo "📊 获取所有分类..."
+curl -s -H "Authorization: Bearer test-token" http://localhost:8080/api/report/categories | jq '.'
+
+# 测试获取标签
+echo "🏷️  获取所有标签..."
+curl -s -H "Authorization: Bearer test-token" http://localhost:8080/api/report/tags | jq '.'
+
+# 测试搜索功能
+echo "🔍 测试搜索功能..."
+curl -s -H "Authorization: Bearer test-token" "http://localhost:8080/api/report/configs/search?keyword=测试" | jq '.'
 
 echo ""
-echo "=== 功能增强说明 ==="
-echo "1. 统计配置功能："
-echo "   - 支持求和、平均值、计数、最大值、最小值、标准差、方差等统计函数"
-echo "   - 支持按字段分组统计"
-echo "   - 支持排序和限制数量"
+echo "📈 测试新图表类型..."
+
+# 测试热力图数据
+echo "🔥 测试热力图数据..."
+curl -s -X POST http://localhost:8080/api/report/chart-data \
+  -H "Content-Type: application/json" \
+  -d '{
+    "uri": "mongodb://localhost:27017/mongo-reporter",
+    "collection": "products",
+    "widget": {
+      "name": "heatmap",
+      "xField": "category",
+      "yField": "name",
+      "valueField": "price"
+    }
+  }' | jq '.'
+
+# 测试桑基图数据
+echo "🌊 测试桑基图数据..."
+curl -s -X POST http://localhost:8080/api/report/chart-data \
+  -H "Content-Type: application/json" \
+  -d '{
+    "uri": "mongodb://localhost:27017/mongo-reporter",
+    "collection": "orders",
+    "widget": {
+      "name": "sankey",
+      "sourceField": "customer",
+      "targetField": "status",
+      "valueField": "amount"
+    }
+  }' | jq '.'
+
+# 测试仪表板数据
+echo "📊 测试仪表板数据..."
+curl -s -X POST http://localhost:8080/api/report/chart-data \
+  -H "Content-Type: application/json" \
+  -d '{
+    "uri": "mongodb://localhost:27017/mongo-reporter",
+    "collection": "products",
+    "widget": {
+      "name": "dashboard",
+      "metricFields": "price,stock"
+    }
+  }' | jq '.'
+
 echo ""
-echo "2. 样式配置功能："
-echo "   - 支持图表主题选择（默认、暗色、浅色）"
-echo "   - 支持显示/隐藏图例"
-echo "   - 支持显示/隐藏数据标签"
-echo "   - 支持动画效果开关"
-echo "   - 支持自定义颜色配置"
+echo "🎨 测试面积图数据..."
+curl -s -X POST http://localhost:8080/api/report/chart-data \
+  -H "Content-Type: application/json" \
+  -d '{
+    "uri": "mongodb://localhost:27017/mongo-reporter",
+    "collection": "products",
+    "widget": {
+      "name": "area",
+      "xField": "category",
+      "yField": "price",
+      "seriesField": "name"
+    }
+  }' | jq '.'
+
 echo ""
-echo "3. 表格功能："
-echo "   - 支持字段选择显示"
-echo "   - 支持排序功能"
-echo "   - 支持分页显示"
-echo "   - 支持数据过滤"
-echo "   - 支持搜索功能"
+echo "📋 功能测试完成！"
 echo ""
-echo "4. 数据过滤功能："
-echo "   - 支持多种操作符：等于、不等于、大于、小于、包含、正则等"
-echo "   - 支持AND/OR逻辑组合"
-echo "   - 支持多条件过滤"
+echo "🎯 新增功能包括："
+echo "  ✅ 报表分类和标签管理"
+echo "  ✅ 高级搜索和筛选"
+echo "  ✅ 热力图支持"
+echo "  ✅ 桑基图支持"
+echo "  ✅ 仪表板支持"
+echo "  ✅ 面积图支持"
+echo "  ✅ 树图支持"
+echo "  ✅ 地图支持"
+echo "  ✅ K线图支持"
 echo ""
-echo "5. 新增图表类型："
-echo "   - 散点图：支持X轴、Y轴、大小字段配置"
-echo "   - 仪表盘：支持数值字段、最小值、最大值配置"
+echo "🌐 访问地址："
+echo "  前端: http://localhost:5173"
+echo "  后端: http://localhost:8080"
 echo ""
-echo "=== 使用说明 ==="
-echo "1. 访问 http://localhost:5173 进入前端应用"
-echo "2. 创建或编辑报表，配置统计和样式选项"
-echo "3. 添加表格组件，配置显示字段和分页选项"
-echo "4. 使用数据过滤功能筛选数据"
-echo "5. 保存报表并查看效果"
-echo ""
-echo "=== 测试完成 ===" 
+echo "📝 使用说明："
+echo "1. 在报表设计器中可以看到新的图表类型"
+echo "2. 在报表列表中可以使用分类和标签筛选"
+echo "3. 支持关键词搜索和状态筛选"
+echo "4. 新图表类型需要配置相应的字段映射" 

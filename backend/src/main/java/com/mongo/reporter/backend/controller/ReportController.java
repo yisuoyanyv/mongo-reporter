@@ -207,6 +207,61 @@ public class ReportController {
         return reportConfigRepository.findByPublicShareTrue();
     }
 
+    // 新增：按分类获取报表
+    @GetMapping("/configs/category/{category}")
+    public List<ReportConfig> getReportsByCategory(@PathVariable String category, 
+                                                  @RequestHeader("Authorization") String auth) {
+        String username = getUsernameFromToken(auth);
+        if (username != null) {
+            return reportConfigRepository.findByCategoryAndOwnerOrPublicShareTrue(category, username);
+        }
+        return reportConfigRepository.findByCategoryAndPublicShareTrue(category);
+    }
+
+    // 新增：按标签获取报表
+    @GetMapping("/configs/tag/{tag}")
+    public List<ReportConfig> getReportsByTag(@PathVariable String tag, 
+                                             @RequestHeader("Authorization") String auth) {
+        String username = getUsernameFromToken(auth);
+        if (username != null) {
+            return reportConfigRepository.findByTagsContainingAndOwnerOrPublicShareTrue(tag, username);
+        }
+        return reportConfigRepository.findByTagsContainingAndPublicShareTrue(tag);
+    }
+
+    // 新增：获取所有分类
+    @GetMapping("/categories")
+    public List<String> getAllCategories(@RequestHeader("Authorization") String auth) {
+        String username = getUsernameFromToken(auth);
+        if (username != null) {
+            return reportConfigRepository.findDistinctCategoriesByOwnerOrPublicShareTrue(username);
+        }
+        return reportConfigRepository.findDistinctCategoriesByPublicShareTrue();
+    }
+
+    // 新增：获取所有标签
+    @GetMapping("/tags")
+    public List<String> getAllTags(@RequestHeader("Authorization") String auth) {
+        String username = getUsernameFromToken(auth);
+        if (username != null) {
+            return reportConfigRepository.findDistinctTagsByOwnerOrPublicShareTrue(username);
+        }
+        return reportConfigRepository.findDistinctTagsByPublicShareTrue();
+    }
+
+    // 新增：搜索报表
+    @GetMapping("/configs/search")
+    public List<ReportConfig> searchReports(@RequestParam String keyword,
+                                          @RequestParam(required = false) String category,
+                                          @RequestParam(required = false) List<String> tags,
+                                          @RequestHeader("Authorization") String auth) {
+        String username = getUsernameFromToken(auth);
+        if (username != null) {
+            return reportConfigRepository.searchReportsByKeywordAndFilters(keyword, category, tags, username);
+        }
+        return reportConfigRepository.searchPublicReportsByKeywordAndFilters(keyword, category, tags);
+    }
+
     @GetMapping("/configs/{id}")
     public ReportConfig getReport(@PathVariable String id, @RequestHeader(value = "Authorization", required = false) String auth) {
         ReportConfig report = reportConfigRepository.findById(id).orElse(null);
@@ -353,6 +408,20 @@ public class ReportController {
                 return processRadarChart(data, widget);
             } else if ("table".equals(chartType)) {
                 return processTableData(data, widget);
+            } else if ("area".equals(chartType) || "stacked".equals(chartType)) {
+                return processAreaStackedChart(data, widget);
+            } else if ("heatmap".equals(chartType)) {
+                return processHeatmapChart(data, widget);
+            } else if ("sankey".equals(chartType)) {
+                return processSankeyChart(data, widget);
+            } else if ("tree".equals(chartType)) {
+                return processTreeChart(data, widget);
+            } else if ("map".equals(chartType)) {
+                return processMapChart(data, widget);
+            } else if ("dashboard".equals(chartType)) {
+                return processDashboardChart(data, widget);
+            } else if ("candlestick".equals(chartType)) {
+                return processCandlestickChart(data, widget);
             } else {
                 return Map.of("success", false, "message", "不支持的图表类型: " + chartType);
             }
@@ -959,5 +1028,391 @@ public class ReportController {
             default:
                 return aggregation;
         }
+    }
+    
+    // 新增图表类型处理方法
+    
+    private Map<String, Object> processAreaStackedChart(List<Map<String, Object>> data, Map<String, Object> widget) {
+        // 面积图和堆叠图处理逻辑
+        String xField = (String) widget.get("xField");
+        String yField = (String) widget.get("yField");
+        String seriesField = (String) widget.get("seriesField");
+        
+        if (xField == null || yField == null) {
+            return Map.of("success", false, "message", "缺少必要字段配置");
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        
+        // 处理数据
+        Map<String, List<Object>> seriesData = new HashMap<>();
+        List<String> xAxisData = new ArrayList<>();
+        
+        for (Map<String, Object> item : data) {
+            Object xValue = item.get(xField);
+            Object yValue = item.get(yField);
+            Object seriesValue = seriesField != null ? item.get(seriesField) : "default";
+            
+            if (xValue != null && yValue != null) {
+                String xStr = String.valueOf(xValue);
+                String seriesStr = String.valueOf(seriesValue);
+                
+                if (!xAxisData.contains(xStr)) {
+                    xAxisData.add(xStr);
+                }
+                
+                seriesData.computeIfAbsent(seriesStr, k -> new ArrayList<>()).add(yValue);
+            }
+        }
+        
+        // 构建系列数据
+        List<Map<String, Object>> series = new ArrayList<>();
+        for (Map.Entry<String, List<Object>> entry : seriesData.entrySet()) {
+            Map<String, Object> seriesItem = new HashMap<>();
+            seriesItem.put("name", entry.getKey());
+            seriesItem.put("type", "line");
+            seriesItem.put("areaStyle", new HashMap<>());
+            seriesItem.put("data", entry.getValue());
+            series.add(seriesItem);
+        }
+        
+        result.put("xAxis", xAxisData);
+        result.put("series", series);
+        
+        return result;
+    }
+    
+    private Map<String, Object> processHeatmapChart(List<Map<String, Object>> data, Map<String, Object> widget) {
+        // 热力图处理逻辑
+        String xField = (String) widget.get("xField");
+        String yField = (String) widget.get("yField");
+        String valueField = (String) widget.get("valueField");
+        
+        if (xField == null || yField == null || valueField == null) {
+            return Map.of("success", false, "message", "热力图需要配置x、y和value字段");
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        
+        // 构建热力图数据
+        List<List<Object>> heatmapData = new ArrayList<>();
+        Set<String> xAxisData = new LinkedHashSet<>();
+        Set<String> yAxisData = new LinkedHashSet<>();
+        
+        for (Map<String, Object> item : data) {
+            Object xValue = item.get(xField);
+            Object yValue = item.get(yField);
+            Object value = item.get(valueField);
+            
+            if (xValue != null && yValue != null && value != null) {
+                String xStr = String.valueOf(xValue);
+                String yStr = String.valueOf(yValue);
+                
+                xAxisData.add(xStr);
+                yAxisData.add(yStr);
+                
+                List<Object> dataPoint = new ArrayList<>();
+                dataPoint.add(xStr);
+                dataPoint.add(yStr);
+                dataPoint.add(value);
+                heatmapData.add(dataPoint);
+            }
+        }
+        
+        Map<String, Object> series = new HashMap<>();
+        series.put("type", "heatmap");
+        series.put("data", heatmapData);
+        
+        result.put("xAxis", new ArrayList<>(xAxisData));
+        result.put("yAxis", new ArrayList<>(yAxisData));
+        result.put("series", List.of(series));
+        
+        return result;
+    }
+    
+    private Map<String, Object> processSankeyChart(List<Map<String, Object>> data, Map<String, Object> widget) {
+        // 桑基图处理逻辑
+        String sourceField = (String) widget.get("sourceField");
+        String targetField = (String) widget.get("targetField");
+        String valueField = (String) widget.get("valueField");
+        
+        if (sourceField == null || targetField == null || valueField == null) {
+            return Map.of("success", false, "message", "桑基图需要配置source、target和value字段");
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        
+        // 构建桑基图数据
+        Map<String, Double> linkMap = new HashMap<>();
+        Set<String> nodes = new LinkedHashSet<>();
+        
+        for (Map<String, Object> item : data) {
+            Object source = item.get(sourceField);
+            Object target = item.get(targetField);
+            Object value = item.get(valueField);
+            
+            if (source != null && target != null && value != null) {
+                String sourceStr = String.valueOf(source);
+                String targetStr = String.valueOf(target);
+                Double valueNum = parseNumber(value);
+                
+                if (valueNum != null) {
+                    nodes.add(sourceStr);
+                    nodes.add(targetStr);
+                    
+                    String key = sourceStr + "->" + targetStr;
+                    linkMap.merge(key, valueNum, Double::sum);
+                }
+            }
+        }
+        
+        // 构建节点和链接数据
+        List<Map<String, Object>> nodeData = new ArrayList<>();
+        for (String node : nodes) {
+            Map<String, Object> nodeItem = new HashMap<>();
+            nodeItem.put("name", node);
+            nodeData.add(nodeItem);
+        }
+        
+        List<Map<String, Object>> linkData = new ArrayList<>();
+        for (Map.Entry<String, Double> entry : linkMap.entrySet()) {
+            String[] parts = entry.getKey().split("->");
+            Map<String, Object> linkItem = new HashMap<>();
+            linkItem.put("source", parts[0]);
+            linkItem.put("target", parts[1]);
+            linkItem.put("value", entry.getValue());
+            linkData.add(linkItem);
+        }
+        
+        result.put("nodes", nodeData);
+        result.put("links", linkData);
+        
+        return result;
+    }
+    
+    private Map<String, Object> processTreeChart(List<Map<String, Object>> data, Map<String, Object> widget) {
+        // 树图处理逻辑
+        String nameField = (String) widget.get("nameField");
+        String parentField = (String) widget.get("parentField");
+        String valueField = (String) widget.get("valueField");
+        
+        if (nameField == null) {
+            return Map.of("success", false, "message", "树图需要配置name字段");
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        
+        // 构建树形数据
+        Map<String, Map<String, Object>> nodeMap = new HashMap<>();
+        Map<String, List<String>> childrenMap = new HashMap<>();
+        
+        for (Map<String, Object> item : data) {
+            Object name = item.get(nameField);
+            Object parent = parentField != null ? item.get(parentField) : null;
+            Object value = valueField != null ? item.get(valueField) : 1;
+            
+            if (name != null) {
+                String nameStr = String.valueOf(name);
+                String parentStr = parent != null ? String.valueOf(parent) : null;
+                
+                Map<String, Object> node = new HashMap<>();
+                node.put("name", nameStr);
+                if (value != null) {
+                    node.put("value", parseNumber(value));
+                }
+                nodeMap.put(nameStr, node);
+                
+                if (parentStr != null && !parentStr.isEmpty()) {
+                    childrenMap.computeIfAbsent(parentStr, k -> new ArrayList<>()).add(nameStr);
+                }
+            }
+        }
+        
+        // 构建树形结构
+        List<Map<String, Object>> treeData = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Object>> entry : nodeMap.entrySet()) {
+            String name = entry.getKey();
+            Map<String, Object> node = entry.getValue();
+            
+            List<String> children = childrenMap.get(name);
+            if (children != null && !children.isEmpty()) {
+                List<Map<String, Object>> childNodes = new ArrayList<>();
+                for (String childName : children) {
+                    childNodes.add(nodeMap.get(childName));
+                }
+                node.put("children", childNodes);
+            }
+            
+            // 只添加根节点
+            if (!nodeMap.containsKey(parentField != null ? String.valueOf(data.get(0).get(parentField)) : null)) {
+                treeData.add(node);
+            }
+        }
+        
+        result.put("data", treeData);
+        
+        return result;
+    }
+    
+    private Map<String, Object> processMapChart(List<Map<String, Object>> data, Map<String, Object> widget) {
+        // 地图处理逻辑
+        String regionField = (String) widget.get("regionField");
+        String valueField = (String) widget.get("valueField");
+        
+        if (regionField == null || valueField == null) {
+            return Map.of("success", false, "message", "地图需要配置region和value字段");
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        
+        // 构建地图数据
+        List<Map<String, Object>> mapData = new ArrayList<>();
+        
+        for (Map<String, Object> item : data) {
+            Object region = item.get(regionField);
+            Object value = item.get(valueField);
+            
+            if (region != null && value != null) {
+                Map<String, Object> dataItem = new HashMap<>();
+                dataItem.put("name", String.valueOf(region));
+                dataItem.put("value", parseNumber(value));
+                mapData.add(dataItem);
+            }
+        }
+        
+        Map<String, Object> series = new HashMap<>();
+        series.put("type", "map");
+        series.put("data", mapData);
+        
+        result.put("series", List.of(series));
+        
+        return result;
+    }
+    
+    private Map<String, Object> processDashboardChart(List<Map<String, Object>> data, Map<String, Object> widget) {
+        // 仪表板处理逻辑 - 返回多个指标
+        String[] metricFields = ((String) widget.get("metricFields")).split(",");
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        
+        List<Map<String, Object>> metrics = new ArrayList<>();
+        
+        for (String field : metricFields) {
+            if (field != null && !field.trim().isEmpty()) {
+                String fieldName = field.trim();
+                Map<String, Object> metric = new HashMap<>();
+                metric.put("name", fieldName);
+                
+                // 计算指标值
+                double sum = 0;
+                double avg = 0;
+                double max = Double.NEGATIVE_INFINITY;
+                double min = Double.POSITIVE_INFINITY;
+                int count = 0;
+                
+                for (Map<String, Object> item : data) {
+                    Object value = item.get(fieldName);
+                    if (value != null) {
+                        Double numValue = parseNumber(value);
+                        if (numValue != null) {
+                            sum += numValue;
+                            max = Math.max(max, numValue);
+                            min = Math.min(min, numValue);
+                            count++;
+                        }
+                    }
+                }
+                
+                if (count > 0) {
+                    avg = sum / count;
+                    metric.put("sum", sum);
+                    metric.put("avg", avg);
+                    metric.put("max", max);
+                    metric.put("min", min);
+                    metric.put("count", count);
+                    metrics.add(metric);
+                }
+            }
+        }
+        
+        result.put("metrics", metrics);
+        
+        return result;
+    }
+    
+    private Map<String, Object> processCandlestickChart(List<Map<String, Object>> data, Map<String, Object> widget) {
+        // K线图处理逻辑
+        String dateField = (String) widget.get("dateField");
+        String openField = (String) widget.get("openField");
+        String closeField = (String) widget.get("closeField");
+        String highField = (String) widget.get("highField");
+        String lowField = (String) widget.get("lowField");
+        
+        if (dateField == null || openField == null || closeField == null || 
+            highField == null || lowField == null) {
+            return Map.of("success", false, "message", "K线图需要配置date、open、close、high、low字段");
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        
+        // 构建K线数据
+        List<String> xAxisData = new ArrayList<>();
+        List<List<Object>> candlestickData = new ArrayList<>();
+        
+        for (Map<String, Object> item : data) {
+            Object date = item.get(dateField);
+            Object open = item.get(openField);
+            Object close = item.get(closeField);
+            Object high = item.get(highField);
+            Object low = item.get(lowField);
+            
+            if (date != null && open != null && close != null && high != null && low != null) {
+                String dateStr = String.valueOf(date);
+                Double openNum = parseNumber(open);
+                Double closeNum = parseNumber(close);
+                Double highNum = parseNumber(high);
+                Double lowNum = parseNumber(low);
+                
+                if (openNum != null && closeNum != null && highNum != null && lowNum != null) {
+                    xAxisData.add(dateStr);
+                    
+                    List<Object> dataPoint = new ArrayList<>();
+                    dataPoint.add(openNum);
+                    dataPoint.add(closeNum);
+                    dataPoint.add(lowNum);
+                    dataPoint.add(highNum);
+                    candlestickData.add(dataPoint);
+                }
+            }
+        }
+        
+        Map<String, Object> series = new HashMap<>();
+        series.put("type", "candlestick");
+        series.put("data", candlestickData);
+        
+        result.put("xAxis", xAxisData);
+        result.put("series", List.of(series));
+        
+        return result;
+    }
+    
+    private Double parseNumber(Object value) {
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        } else if (value instanceof String) {
+            try {
+                return Double.parseDouble((String) value);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
     }
 } 

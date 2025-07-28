@@ -20,6 +20,12 @@ public class ReportConfig {
     private boolean publicShare;
     private String createdAt;
     private String updatedAt;
+    
+    // 新增字段：分类和标签
+    private String category; // 报表分类
+    private List<String> tags; // 标签列表
+    private String version; // 版本号
+    private String status; // 状态：draft(草稿)、published(已发布)、archived(已归档)
 
     public ReportConfig() {}
 
@@ -30,6 +36,8 @@ public class ReportConfig {
         this.dataSourceUri = dataSourceUri;
         this.collection = collection;
         this.publicShare = false;
+        this.status = "draft";
+        this.version = "1.0.0";
     }
 
     // Getters and Setters
@@ -68,4 +76,17 @@ public class ReportConfig {
 
     public String getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(String updatedAt) { this.updatedAt = updatedAt; }
+    
+    // 新增字段的getter和setter
+    public String getCategory() { return category; }
+    public void setCategory(String category) { this.category = category; }
+
+    public List<String> getTags() { return tags; }
+    public void setTags(List<String> tags) { this.tags = tags; }
+
+    public String getVersion() { return version; }
+    public void setVersion(String version) { this.version = version; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
 } 

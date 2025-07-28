@@ -46,6 +46,51 @@
             </el-form-item>
           </el-col>
         </el-row>
+        
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="分类">
+              <el-select v-model="reportForm.category" placeholder="选择分类" clearable>
+                <el-option label="销售报表" value="销售报表" />
+                <el-option label="财务报表" value="财务报表" />
+                <el-option label="运营报表" value="运营报表" />
+                <el-option label="用户报表" value="用户报表" />
+                <el-option label="产品报表" value="产品报表" />
+                <el-option label="其他" value="其他" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="标签">
+              <el-select
+                v-model="reportForm.tags"
+                placeholder="选择标签"
+                multiple
+                filterable
+                allow-create
+                clearable
+              >
+                <el-option label="重要" value="重要" />
+                <el-option label="紧急" value="紧急" />
+                <el-option label="月度" value="月度" />
+                <el-option label="季度" value="季度" />
+                <el-option label="年度" value="年度" />
+                <el-option label="分析" value="分析" />
+                <el-option label="监控" value="监控" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="状态">
+              <el-select v-model="reportForm.status" placeholder="选择状态">
+                <el-option label="草稿" value="draft" />
+                <el-option label="已发布" value="published" />
+                <el-option label="已归档" value="archived" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
         <el-form-item label="描述">
           <el-input v-model="reportForm.description" type="textarea" placeholder="请输入报表描述" />
         </el-form-item>
@@ -502,7 +547,10 @@ const reportForm = ref({
   collection: '',
   widgets: [],
   fieldMapping: {},
-  filters: []
+  filters: [],
+  category: '', // 新增分类字段
+  tags: [], // 新增标签字段
+  status: 'draft' // 新增状态字段
 })
 
 const dataSources = ref([])
@@ -519,7 +567,15 @@ const widgets = ref([
   { name: 'gauge', label: '仪表盘' },
   { name: 'funnel', label: '漏斗图' },
   { name: 'scatter', label: '散点图' },
-  { name: 'radar', label: '雷达图' }
+  { name: 'radar', label: '雷达图' },
+  { name: 'heatmap', label: '热力图' },
+  { name: 'sankey', label: '桑基图' },
+  { name: 'tree', label: '树图' },
+  { name: 'map', label: '地图' },
+  { name: 'dashboard', label: '仪表板' },
+  { name: 'area', label: '面积图' },
+  { name: 'stacked', label: '堆叠图' },
+  { name: 'candlestick', label: 'K线图' }
 ])
 
 const canvas = ref([])
@@ -1249,7 +1305,10 @@ const loadReport = async (id) => {
       collection: report.collection,
       widgets: report.widgets || [],
       fieldMapping: report.fieldMapping || {},
-      filters: report.filters || []
+      filters: report.filters || [],
+      category: report.category || '', // 加载分类
+      tags: report.tags || [], // 加载标签
+      status: report.status || 'draft' // 加载状态
     }
     console.log('加载报表后的过滤条件:', reportForm.value.filters)
     
