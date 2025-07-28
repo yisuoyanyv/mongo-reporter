@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Login from '../views/Login.vue'
 import Register from '../views/Register.vue'
+import Dashboard from '../views/Dashboard.vue'
 import ReportList from '../views/ReportList.vue'
 import ReportDesigner from '../views/ReportDesigner.vue'
 import ReportViewer from '../views/ReportViewer.vue'
@@ -21,6 +22,12 @@ const router = createRouter({
       path: '/register',
       name: 'register',
       component: Register
+    },
+    {
+      path: '/dashboard',
+      name: 'dashboard',
+      component: Dashboard,
+      meta: { requiresAuth: true }
     },
     {
       path: '/reports',
@@ -50,6 +57,18 @@ const router = createRouter({
       path: '/datasources',
       name: 'datasources',
       component: () => import('../views/DataSourceManager.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/users',
+      name: 'users',
+      component: () => import('../views/UserManager.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: () => import('../views/SystemSettings.vue'),
       meta: { requiresAuth: true }
     },
     {

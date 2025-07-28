@@ -100,9 +100,9 @@ const autoLogin = async () => {
         ElMessage.success('自动登录成功')
         console.log('自动登录成功，token已保存')
         
-        // 如果当前在登录页面，跳转到报表页面
+        // 如果当前在登录页面，跳转到仪表板页面
         if (router.currentRoute.value.path === '/login') {
-          router.push('/reports')
+          router.push('/dashboard')
         }
       } else {
         console.log('登录响应中没有token')
@@ -138,8 +138,11 @@ onMounted(() => {
             <h2 style="margin: 0; color: white; font-weight: 600; font-size: 24px; text-shadow: 0 1px 2px rgba(0,0,0,0.1);">MongoReporter</h2>
           </div>
           <el-menu mode="horizontal" :router="true" :default-active="route.path" style="border-bottom: none; flex: 1; background: transparent;">
+            <el-menu-item index="/dashboard" style="min-width: 120px; color: rgba(255,255,255,0.8);">仪表板</el-menu-item>
             <el-menu-item index="/reports" style="min-width: 120px; color: rgba(255,255,255,0.8);">报表管理</el-menu-item>
             <el-menu-item index="/datasources" style="min-width: 120px; color: rgba(255,255,255,0.8);">数据源管理</el-menu-item>
+            <el-menu-item index="/users" style="min-width: 120px; color: rgba(255,255,255,0.8);">用户管理</el-menu-item>
+            <el-menu-item index="/settings" style="min-width: 120px; color: rgba(255,255,255,0.8);">系统设置</el-menu-item>
           </el-menu>
         </div>
         <div style="display: flex; align-items: center; flex-shrink: 0;">
