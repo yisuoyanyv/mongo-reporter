@@ -179,13 +179,12 @@ const fetchDataSources = async () => {
     console.log('API响应:', response)
     console.log('响应数据:', response.data)
     
-    // 为每个数据源添加连接状态
+    // 使用数据库中的连接状态，如果没有则设为unknown
     dataSources.value = response.data.map(ds => ({
       ...ds,
-      connectionStatus: 'unknown' // 初始状态为未测试
+      connectionStatus: ds.connectionStatus || 'unknown'
     }))
     console.log('数据源列表已更新:', dataSources.value)
-    ElMessage.success(`成功加载 ${response.data.length} 个数据源`)
   } catch (err) {
     console.error('获取数据源失败:', err)
     error.value = `获取数据源失败: ${err.response?.data?.message || err.message}`
@@ -199,6 +198,7 @@ const testConnection = async (dataSource) => {
   try {
     const requestData = {
       dataSource: {
+        id: dataSource.id,
         uri: dataSource.uri,
         useAuth: dataSource.useAuth || false,
         username: dataSource.username || '',

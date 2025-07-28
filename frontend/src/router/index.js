@@ -51,6 +51,12 @@ const router = createRouter({
       name: 'datasources',
       component: () => import('../views/DataSourceManager.vue'),
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/share/:id',
+      name: 'share',
+      component: () => import('../views/ReportShare.vue'),
+      meta: { requiresAuth: false }
     }
   ]
 })

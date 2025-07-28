@@ -223,10 +223,20 @@ const renderCharts = async () => {
           existingChart.dispose()
         }
         
-        const chart = echarts.init(chartDom)
+        // 根据主题配置初始化图表
+        const theme = widget.theme || 'default'
+        let chart
+        if (theme === 'dark') {
+          chart = echarts.init(chartDom, 'dark')
+        } else if (theme === 'light') {
+          chart = echarts.init(chartDom, 'light')
+        } else {
+          chart = echarts.init(chartDom)
+        }
+        
         const option = await generateChartOption(widget)
         chart.setOption(option)
-        console.log('渲染图表:', widget.name, option)
+        console.log('渲染图表:', widget.name, '主题:', theme, option)
       } else {
         console.warn('找不到图表容器:', `chart-${widget.id}`)
       }
@@ -251,7 +261,8 @@ const generateChartOption = async (widget) => {
       collection: report.value.collection,
       filters: report.value.filters || [],
       widget: {
-        name: widget.name,
+        name: widget.name || widget.type,
+        type: widget.type || widget.name,
         xField: widget.xField,
         yField: widget.yField,
         seriesField: widget.seriesField,
@@ -806,7 +817,7 @@ const refreshData = async () => {
 }
 
 const shareReport = () => {
-  const shareUrl = `${window.location.origin}/report/${route.params.id}`
+  const shareUrl = `${window.location.origin}/share/${route.params.id}`
   
   // 复制到剪贴板
   navigator.clipboard.writeText(shareUrl).then(() => {

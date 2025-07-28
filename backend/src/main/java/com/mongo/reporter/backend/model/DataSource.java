@@ -2,6 +2,7 @@ package com.mongo.reporter.backend.model;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
+import java.util.Date;
 
 @Document(collection = "data_sources")
 public class DataSource {
@@ -15,6 +16,8 @@ public class DataSource {
     private String owner;
     private boolean isDefault;
     private boolean useAuth;
+    private String connectionStatus; // success, error, unknown
+    private Date lastTestTime;
 
     public DataSource() {}
 
@@ -108,6 +111,22 @@ public class DataSource {
 
     public void setUseAuth(boolean useAuth) {
         this.useAuth = useAuth;
+    }
+
+    public String getConnectionStatus() {
+        return connectionStatus;
+    }
+
+    public void setConnectionStatus(String connectionStatus) {
+        this.connectionStatus = connectionStatus;
+    }
+
+    public Date getLastTestTime() {
+        return lastTestTime;
+    }
+
+    public void setLastTestTime(Date lastTestTime) {
+        this.lastTestTime = lastTestTime;
     }
 
     // 构建认证URI的方法

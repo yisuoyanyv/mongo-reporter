@@ -330,7 +330,15 @@ public class ReportController {
                 data = applyFilters(data, filters);
             }
             
+            // 兼容 name 和 type 字段
             String chartType = (String) widget.get("name");
+            if (chartType == null) {
+                chartType = (String) widget.get("type");
+            }
+            if (chartType == null) {
+                return Map.of("success", false, "message", "图表类型未指定");
+            }
+            
             if ("line".equals(chartType) || "bar".equals(chartType)) {
                 return processLineBarChart(data, widget);
             } else if ("pie".equals(chartType)) {

@@ -753,10 +753,20 @@ const renderDesignerCharts = async () => {
           existingChart.dispose()
         }
         
-        const chart = echarts.init(chartDom)
+        // 根据主题配置初始化图表
+        const theme = element.config?.theme || 'default'
+        let chart
+        if (theme === 'dark') {
+          chart = echarts.init(chartDom, 'dark')
+        } else if (theme === 'light') {
+          chart = echarts.init(chartDom, 'light')
+        } else {
+          chart = echarts.init(chartDom)
+        }
+        
         const option = await getChartOption(element)
         if (option) {
-          console.log('设置图表配置:', element.name, option)
+          console.log('设置图表配置:', element.name, '主题:', theme, option)
           chart.setOption(option)
           console.log('图表配置已应用:', element.name)
         } else {
@@ -839,7 +849,8 @@ const getChartOption = async (element) => {
         collection: reportForm.value.collection,
         filters: reportForm.value.filters || [],
         widget: {
-          name: element.name,
+          name: element.name || element.type,
+          type: element.type || element.name,
           xField: element.config.xField,
           yField: element.config.yField,
           seriesField: element.config.seriesField,

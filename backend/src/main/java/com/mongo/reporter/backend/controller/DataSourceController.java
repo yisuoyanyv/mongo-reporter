@@ -73,6 +73,22 @@ public class DataSourceController {
             boolean success = mongoConnectionUtil.testConnection(dataSource);
             result.put("success", success);
             result.put("message", success ? "连接成功" : "连接失败");
+            
+            // 如果有数据源ID，更新数据库中的连接状态
+            String dataSourceId = (String) dataSourceMap.get("id");
+            if (dataSourceId != null && !dataSourceId.trim().isEmpty()) {
+                try {
+                    DataSource existingDataSource = dataSourceRepository.findById(dataSourceId).orElse(null);
+                    if (existingDataSource != null) {
+                        existingDataSource.setConnectionStatus(success ? "success" : "error");
+                        existingDataSource.setLastTestTime(new Date());
+                        dataSourceRepository.save(existingDataSource);
+                    }
+                } catch (Exception e) {
+                    // 记录错误但不影响测试结果
+                    System.err.println("保存连接状态失败: " + e.getMessage());
+                }
+            }
         } else {
             // 兼容旧的测试方式
             String uri = (String) request.get("uri");
