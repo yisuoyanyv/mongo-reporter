@@ -120,7 +120,7 @@ import { useRoute } from 'vue-router'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
-import { Loading, Search } from '@element-plus/icons-vue'
+import { Loading, Search, Refresh, ArrowDown } from '@element-plus/icons-vue'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import * as XLSX from 'xlsx'
@@ -256,7 +256,7 @@ const generateChartOption = async (widget) => {
   
   try {
     // 获取真实数据
-    const response = await axios.post('/api/report/chart-data', {
+    const requestData = {
       uri: report.value.dataSourceUri,
       collection: report.value.collection,
       filters: report.value.filters || [],
@@ -285,7 +285,12 @@ const generateChartOption = async (widget) => {
         animation: widget.animation,
         colors: widget.colors
       }
-    })
+    }
+    
+    console.log('发送到后端的数据:', requestData)
+    console.log('Widget对象:', widget)
+    
+    const response = await axios.post('/api/report/chart-data', requestData)
     
     console.log('报表查看器图表数据响应:', widget.name, response.data)
     
