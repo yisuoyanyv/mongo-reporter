@@ -29,6 +29,48 @@ const checkLoginStatus = () => {
     }
   } else {
     isLoggedIn.value = false
+    // 尝试自动登录
+    autoLogin()
+  }
+}
+
+// 自动登录
+const autoLogin = async () => {
+  try {
+    console.log('尝试自动登录...')
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        username: 'admin',
+        password: 'admin123'
+      })
+    })
+    
+    if (response.ok) {
+      const data = await response.json()
+      if (data.token) {
+        localStorage.setItem('token', data.token)
+        localStorage.setItem('username', data.username || 'admin')
+        isLoggedIn.value = true
+        username.value = data.username || 'admin'
+        console.log('自动登录成功')
+        
+        // 如果当前在登录页面，跳转到仪表板页面
+        if (router.currentRoute.value.path === '/login') {
+          router.push('/dashboard')
+        }
+        return
+      }
+    }
+  } catch (error) {
+    console.log('自动登录失败:', error)
+  }
+  
+  // 自动登录失败，跳转到登录页面
+  if (router.currentRoute.value.path !== '/login') {
     router.push('/login')
   }
 }
