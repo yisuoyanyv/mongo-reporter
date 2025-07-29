@@ -614,7 +614,7 @@ public class ReportController {
     private Map<String, Object> processAggregatedChart(List<Map<String, Object>> data, Map<String, Object> widget, String chartType) {
         String groupBy = (String) widget.get("groupBy");
         String aggregation = (String) widget.get("aggregation");
-        String valueField = (String) widget.get("valueField");
+        String yField = (String) widget.get("yField");
         String sortBy = (String) widget.get("sortBy");
         String sortOrder = (String) widget.get("sortOrder");
         Integer limit = (Integer) widget.get("limit");
@@ -623,10 +623,16 @@ public class ReportController {
         
         for (Map<String, Object> item : data) {
             String groupKey = groupBy != null ? String.valueOf(item.get(groupBy)) : "总计";
-            Number value = (Number) item.get(valueField);
+            Object valueObj = item.get(yField);
             
-            if (value != null) {
-                groupedData.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(value);
+            if (valueObj != null) {
+                if ("count".equals(aggregation)) {
+                    // 对于计数统计，任何非空值都算作1
+                    groupedData.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(1);
+                } else if (valueObj instanceof Number) {
+                    // 对于数值统计，必须是数字类型
+                    groupedData.computeIfAbsent(groupKey, k -> new ArrayList<>()).add((Number) valueObj);
+                }
             }
         }
         
@@ -656,7 +662,7 @@ public class ReportController {
         List<Number> yAxis = aggregatedData.stream().map(item -> (Number) item.get("value")).collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
         
         Map<String, Object> series = new HashMap<>();
-        series.put("name", aggregation + "(" + valueField + ")");
+        series.put("name", aggregation + "(" + yField + ")");
         series.put("type", chartType);
         series.put("data", yAxis);
         if ("line".equals(chartType)) {
