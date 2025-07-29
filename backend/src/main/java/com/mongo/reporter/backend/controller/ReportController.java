@@ -231,22 +231,50 @@ public class ReportController {
 
     // 新增：获取所有分类
     @GetMapping("/categories")
-    public List<String> getAllCategories(@RequestHeader("Authorization") String auth) {
+    public List<String> getAllCategories(@RequestHeader(value = "Authorization", required = false) String auth) {
         String username = getUsernameFromToken(auth);
+        List<ReportConfig> reports;
+        
         if (username != null) {
-            return reportConfigRepository.findDistinctCategoriesByOwnerOrPublicShareTrue(username);
+            // 有认证用户，获取用户自己的报表和公开报表
+            reports = reportConfigRepository.findByOwnerOrPublicShareTrue(username);
+        } else {
+            // 没有认证，只获取公开报表
+            reports = reportConfigRepository.findByPublicShareTrue();
         }
-        return reportConfigRepository.findDistinctCategoriesByPublicShareTrue();
+        
+        Set<String> categories = new HashSet<>();
+        for (ReportConfig report : reports) {
+            if (report.getCategory() != null && !report.getCategory().trim().isEmpty()) {
+                categories.add(report.getCategory().trim());
+            }
+        }
+        
+        return new ArrayList<>(categories);
     }
 
     // 新增：获取所有标签
     @GetMapping("/tags")
-    public List<String> getAllTags(@RequestHeader("Authorization") String auth) {
+    public List<String> getAllTags(@RequestHeader(value = "Authorization", required = false) String auth) {
         String username = getUsernameFromToken(auth);
+        List<ReportConfig> reports;
+        
         if (username != null) {
-            return reportConfigRepository.findDistinctTagsByOwnerOrPublicShareTrue(username);
+            // 有认证用户，获取用户自己的报表和公开报表
+            reports = reportConfigRepository.findByOwnerOrPublicShareTrue(username);
+        } else {
+            // 没有认证，只获取公开报表
+            reports = reportConfigRepository.findByPublicShareTrue();
         }
-        return reportConfigRepository.findDistinctTagsByPublicShareTrue();
+        
+        Set<String> tags = new HashSet<>();
+        for (ReportConfig report : reports) {
+            if (report.getTags() != null && !report.getTags().isEmpty()) {
+                tags.addAll(report.getTags());
+            }
+        }
+        
+        return new ArrayList<>(tags);
     }
 
     // 新增：搜索报表
@@ -254,7 +282,7 @@ public class ReportController {
     public List<ReportConfig> searchReports(@RequestParam String keyword,
                                           @RequestParam(required = false) String category,
                                           @RequestParam(required = false) List<String> tags,
-                                          @RequestHeader("Authorization") String auth) {
+                                          @RequestHeader(value = "Authorization", required = false) String auth) {
         String username = getUsernameFromToken(auth);
         if (username != null) {
             return reportConfigRepository.searchReportsByKeywordAndFilters(keyword, category, tags, username);

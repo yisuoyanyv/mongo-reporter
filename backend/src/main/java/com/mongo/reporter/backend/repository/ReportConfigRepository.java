@@ -24,24 +24,18 @@ public interface ReportConfigRepository extends MongoRepository<ReportConfig, St
     List<ReportConfig> findByTagsContainingAndPublicShareTrue(String tag);
     List<ReportConfig> findByTagsContainingAndOwnerOrPublicShareTrue(String tag, String owner);
     
-    // 获取所有分类
-    @Query("SELECT DISTINCT category FROM report_configs WHERE owner = ?0 OR publicShare = true")
-    List<String> findDistinctCategoriesByOwnerOrPublicShareTrue(String owner);
+    // 获取所有分类 - 使用MongoDB聚合查询
+    @Query(value = "{}", fields = "{'category': 1}")
+    List<ReportConfig> findAllCategories();
     
-    @Query("SELECT DISTINCT category FROM report_configs WHERE publicShare = true")
-    List<String> findDistinctCategoriesByPublicShareTrue();
+    // 获取所有标签 - 使用MongoDB聚合查询
+    @Query(value = "{}", fields = "{'tags': 1}")
+    List<ReportConfig> findAllTags();
     
-    // 获取所有标签
-    @Query("SELECT DISTINCT tags FROM report_configs WHERE owner = ?0 OR publicShare = true")
-    List<String> findDistinctTagsByOwnerOrPublicShareTrue(String owner);
-    
-    @Query("SELECT DISTINCT tags FROM report_configs WHERE publicShare = true")
-    List<String> findDistinctTagsByPublicShareTrue();
-    
-    // 搜索报表
-    @Query("SELECT * FROM report_configs WHERE (owner = ?3 OR publicShare = true) AND (name LIKE %?0% OR description LIKE %?0%) AND (?1 IS NULL OR category = ?1) AND (?2 IS NULL OR tags CONTAINS ANY ?2)")
+    // 搜索报表 - 使用MongoDB查询语法
+    @Query("{'$or': [{'owner': ?3}, {'publicShare': true}], '$and': [{'$or': [{'name': {'$regex': ?0, '$options': 'i'}}, {'description': {'$regex': ?0, '$options': 'i'}}]}, {'$or': [{'category': ?1}, {'category': {'$exists': false}}]}]}")
     List<ReportConfig> searchReportsByKeywordAndFilters(String keyword, String category, List<String> tags, String owner);
     
-    @Query("SELECT * FROM report_configs WHERE publicShare = true AND (name LIKE %?0% OR description LIKE %?0%) AND (?1 IS NULL OR category = ?1) AND (?2 IS NULL OR tags CONTAINS ANY ?2)")
+    @Query("{'publicShare': true, '$and': [{'$or': [{'name': {'$regex': ?0, '$options': 'i'}}, {'description': {'$regex': ?0, '$options': 'i'}}]}, {'$or': [{'category': ?1}, {'category': {'$exists': false}}]}]}")
     List<ReportConfig> searchPublicReportsByKeywordAndFilters(String keyword, String category, List<String> tags);
 } 

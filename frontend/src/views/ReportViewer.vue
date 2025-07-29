@@ -688,48 +688,59 @@ const getWidgetTitle = (widget) => {
   }
 }
 
-const exportImage = () => {
-  ElMessage.info('导出图片功能开发中...')
+const exportImage = async () => {
+  try {
+    ElMessage.info('正在生成图片...')
+    
+    const response = await axios.post(`/api/export/image/${route.params.id}`, {
+      format: 'png',
+      width: 800,
+      height: 600,
+      quality: 0.9
+    }, {
+      responseType: 'blob'
+    })
+    
+    const blob = new Blob([response.data], { type: 'image/png' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${report.value.name || '报表'}_${new Date().toISOString().slice(0, 10)}.png`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    ElMessage.success('图片导出成功')
+  } catch (error) {
+    console.error('图片导出失败:', error)
+    ElMessage.error('图片导出失败')
+  }
 }
 
 const exportToPDF = async () => {
   try {
     ElMessage.info('正在生成PDF...')
     
-    const reportContainer = document.querySelector('.report-viewer')
-    if (!reportContainer) {
-      ElMessage.error('未找到报表容器')
-      return
-    }
-    
-    const canvas = await html2canvas(reportContainer, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff'
+    const response = await axios.post(`/api/export/pdf/${route.params.id}`, {
+      includeCharts: true,
+      includeData: true,
+      pageSize: 'A4',
+      orientation: 'portrait'
+    }, {
+      responseType: 'blob'
     })
     
-    const imgData = canvas.toDataURL('image/png')
-    const pdf = new jsPDF('p', 'mm', 'a4')
-    const imgWidth = 210
-    const pageHeight = 295
-    const imgHeight = (canvas.height * imgWidth) / canvas.width
-    let heightLeft = imgHeight
+    const blob = new Blob([response.data], { type: 'application/pdf' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${report.value.name || '报表'}_${new Date().toISOString().slice(0, 10)}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
     
-    let position = 0
-    
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-    heightLeft -= pageHeight
-    
-    while (heightLeft >= 0) {
-      position = heightLeft - imgHeight
-      pdf.addPage()
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-      heightLeft -= pageHeight
-    }
-    
-    const fileName = `${report.value.name || '报表'}_${new Date().toISOString().slice(0, 10)}.pdf`
-    pdf.save(fileName)
     ElMessage.success('PDF导出成功')
   } catch (error) {
     console.error('PDF导出失败:', error)
@@ -741,37 +752,26 @@ const exportToExcel = async () => {
   try {
     ElMessage.info('正在生成Excel...')
     
-    const workbook = XLSX.utils.book_new()
+    const response = await axios.post(`/api/export/excel/${route.params.id}`, {
+      includeCharts: true,
+      includeData: true,
+      multipleSheets: true
+    }, {
+      responseType: 'blob'
+    })
     
-    // 导出表格数据
-    for (const widget of report.value.widgets || []) {
-      if (widget.name === 'table' && tableData.value[widget.id]) {
-        const data = getFilteredTableData(widget)
-        const worksheet = XLSX.utils.json_to_sheet(data)
-        const sheetName = widget.label || '数据明细'
-        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
-      }
-    }
+    const blob = new Blob([response.data], { 
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${report.value.name || '报表'}_${new Date().toISOString().slice(0, 10)}.xlsx`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
     
-    // 导出图表数据（如果有的话）
-    const chartData = []
-    for (const widget of report.value.widgets || []) {
-      if (widget.name !== 'table') {
-        // 这里可以添加图表数据的导出逻辑
-        chartData.push({
-          图表类型: getWidgetTitle(widget),
-          配置: JSON.stringify(widget.config || {})
-        })
-      }
-    }
-    
-    if (chartData.length > 0) {
-      const chartWorksheet = XLSX.utils.json_to_sheet(chartData)
-      XLSX.utils.book_append_sheet(workbook, chartWorksheet, '图表配置')
-    }
-    
-    const fileName = `${report.value.name || '报表'}_${new Date().toISOString().slice(0, 10)}.xlsx`
-    XLSX.writeFile(workbook, fileName)
     ElMessage.success('Excel导出成功')
   } catch (error) {
     console.error('Excel导出失败:', error)

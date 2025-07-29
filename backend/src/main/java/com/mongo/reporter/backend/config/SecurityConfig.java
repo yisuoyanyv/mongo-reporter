@@ -30,8 +30,13 @@ public class SecurityConfig {
                 .requestMatchers("/api/report/chart-data").permitAll()
                 .requestMatchers("/api/report/configs").permitAll()
                 .requestMatchers("/api/report/configs/**").permitAll()
-                .requestMatchers("/api/users/**").permitAll()
-                .requestMatchers("/api/settings/**").permitAll()
+                                      .requestMatchers("/api/report/categories").permitAll()
+                      .requestMatchers("/api/report/tags").permitAll()
+                      .requestMatchers("/api/report/configs/search").permitAll()
+                      .requestMatchers("/api/export/**").permitAll()
+                      .requestMatchers("/api/templates/**").permitAll()
+                      .requestMatchers("/api/users/**").permitAll()
+                      .requestMatchers("/api/settings/**").permitAll()
                 .anyRequest().authenticated()
             );
         return http.build();

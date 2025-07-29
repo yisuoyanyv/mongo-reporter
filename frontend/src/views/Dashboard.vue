@@ -1,12 +1,12 @@
 <template>
   <div class="dashboard">
-    <el-row :gutter="20">
-      <!-- 统计卡片 -->
-      <el-col :span="6" v-for="stat in stats" :key="stat.title">
-        <el-card class="stat-card" :body-style="{ padding: '20px' }">
+    <!-- 统计卡片 - 响应式布局 -->
+    <el-row :gutter="20" class="stats-row">
+      <el-col :xs="12" :sm="6" v-for="stat in stats" :key="stat.title">
+        <el-card class="stat-card" :body-style="{ padding: '15px' }">
           <div class="stat-content">
             <div class="stat-icon" :style="{ backgroundColor: stat.color }">
-              <el-icon :size="24" color="white">
+              <el-icon :size="20" color="white">
                 <component :is="stat.icon" />
               </el-icon>
             </div>
@@ -20,9 +20,9 @@
     </el-row>
 
     <el-row :gutter="20" style="margin-top: 20px;">
-      <!-- 最近报表 -->
-      <el-col :span="12">
-        <el-card>
+      <!-- 最近报表 - 响应式布局 -->
+      <el-col :xs="24" :sm="12">
+        <el-card class="content-card">
           <template #header>
             <div class="card-header">
               <span>最近报表</span>
@@ -34,7 +34,7 @@
           <div v-if="recentReports.length === 0" class="empty-state">
             <el-empty description="暂无报表" />
           </div>
-          <div v-else>
+          <div v-else class="report-list">
             <div v-for="report in recentReports" :key="report.id" class="report-item">
               <div class="report-info">
                 <div class="report-name">{{ report.name }}</div>
@@ -55,9 +55,9 @@
         </el-card>
       </el-col>
 
-      <!-- 数据源状态 -->
-      <el-col :span="12">
-        <el-card>
+      <!-- 数据源状态 - 响应式布局 -->
+      <el-col :xs="24" :sm="12">
+        <el-card class="content-card">
           <template #header>
             <div class="card-header">
               <span>数据源状态</span>
@@ -69,7 +69,7 @@
           <div v-if="dataSources.length === 0" class="empty-state">
             <el-empty description="暂无数据源" />
           </div>
-          <div v-else>
+          <div v-else class="datasource-list">
             <div v-for="ds in dataSources" :key="ds.id" class="datasource-item">
               <div class="datasource-info">
                 <div class="datasource-name">{{ ds.name }}</div>
@@ -93,28 +93,28 @@
     </el-row>
 
     <el-row :gutter="20" style="margin-top: 20px;">
-      <!-- 快速操作 -->
+      <!-- 快速操作 - 响应式布局 -->
       <el-col :span="24">
-        <el-card>
+        <el-card class="quick-actions-card">
           <template #header>
             <span>快速操作</span>
           </template>
           <div class="quick-actions">
-            <el-button type="primary" size="large" @click="$router.push('/designer')">
+            <el-button type="primary" size="large" @click="$router.push('/designer')" class="action-btn">
               <el-icon><Plus /></el-icon>
-              新建报表
+              <span class="action-text">新建报表</span>
             </el-button>
-            <el-button type="success" size="large" @click="$router.push('/datasources')">
+            <el-button type="success" size="large" @click="$router.push('/datasources')" class="action-btn">
               <el-icon><Connection /></el-icon>
-              添加数据源
+              <span class="action-text">添加数据源</span>
             </el-button>
-            <el-button type="warning" size="large" @click="showTemplateDialog">
+            <el-button type="warning" size="large" @click="showTemplateDialog" class="action-btn">
               <el-icon><Document /></el-icon>
-              使用模板
+              <span class="action-text">使用模板</span>
             </el-button>
-            <el-button type="info" size="large" @click="showHelpDialog">
+            <el-button type="info" size="large" @click="showHelpDialog" class="action-btn">
               <el-icon><QuestionFilled /></el-icon>
-              使用帮助
+              <span class="action-text">使用帮助</span>
             </el-button>
           </div>
         </el-card>
@@ -122,7 +122,7 @@
     </el-row>
 
     <!-- 模板选择对话框 -->
-    <el-dialog v-model="templateDialogVisible" title="选择模板" width="600px">
+    <el-dialog v-model="templateDialogVisible" title="选择模板" width="90%" class="template-dialog">
       <div class="template-list">
         <el-card 
           v-for="template in templates" 
@@ -144,7 +144,7 @@
     </el-dialog>
 
     <!-- 帮助对话框 -->
-    <el-dialog v-model="helpDialogVisible" title="使用帮助" width="800px">
+    <el-dialog v-model="helpDialogVisible" title="使用帮助" width="90%" class="help-dialog">
       <div class="help-content">
         <h3>快速开始</h3>
         <ol>
@@ -324,8 +324,12 @@ onMounted(() => {
   padding: 20px;
 }
 
-.stat-card {
+.stats-row {
   margin-bottom: 20px;
+}
+
+.stat-card {
+  margin-bottom: 0; /* Remove margin-bottom for grid layout */
 }
 
 .stat-content {
@@ -334,13 +338,13 @@ onMounted(() => {
 }
 
 .stat-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 12px;
+  width: 50px; /* Smaller icon for stats */
+  height: 50px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 16px;
+  margin-right: 12px;
 }
 
 .stat-info {
@@ -348,21 +352,23 @@ onMounted(() => {
 }
 
 .stat-value {
-  font-size: 24px;
+  font-size: 20px; /* Smaller font for stats */
   font-weight: bold;
   color: #303133;
   margin-bottom: 4px;
 }
 
 .stat-title {
-  font-size: 14px;
+  font-size: 12px; /* Smaller font for stats */
   color: #909399;
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.content-card {
+  margin-bottom: 20px;
+}
+
+.report-list, .datasource-list {
+  /* No specific styles needed for now, rely on flex layout */
 }
 
 .report-item, .datasource-item {
@@ -404,10 +410,24 @@ onMounted(() => {
   padding: 40px 0;
 }
 
+.quick-actions-card {
+  margin-bottom: 0; /* Remove margin-bottom for grid layout */
+}
+
 .quick-actions {
   display: flex;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-text {
+  font-size: 14px;
 }
 
 .template-list {
@@ -455,5 +475,95 @@ onMounted(() => {
 
 .help-content li {
   margin-bottom: 8px;
+}
+
+/* 移动端响应式样式 */
+@media (max-width: 768px) {
+  .dashboard {
+    padding: 10px;
+  }
+  
+  .stats-row {
+    margin-bottom: 15px;
+  }
+  
+  .stat-card {
+    margin-bottom: 10px;
+  }
+  
+  .stat-content {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .stat-icon {
+    margin-right: 0;
+    margin-bottom: 8px;
+    align-self: center;
+  }
+  
+  .stat-value {
+    font-size: 18px;
+  }
+  
+  .stat-title {
+    font-size: 11px;
+  }
+  
+  .content-card {
+    margin-bottom: 15px;
+  }
+  
+  .card-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  
+  .quick-actions {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .action-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .template-list {
+    grid-template-columns: 1fr;
+  }
+  
+  .template-dialog, .help-dialog {
+    width: 95% !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .stat-icon {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .stat-value {
+    font-size: 16px;
+  }
+  
+  .report-item, .datasource-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .report-actions, .datasource-actions {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+  }
+  
+  .report-actions .el-button,
+  .datasource-actions .el-button {
+    flex: 1;
+  }
 }
 </style> 
