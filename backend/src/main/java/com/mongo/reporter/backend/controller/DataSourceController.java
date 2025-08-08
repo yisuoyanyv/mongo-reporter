@@ -122,15 +122,51 @@ public class DataSourceController {
     @PutMapping("/{id}")
     public DataSource update(@PathVariable String id, @RequestBody DataSource dataSource, @RequestHeader("Authorization") String auth) {
         String username = getUsernameFromToken(auth);
-        DataSource existing = dataSourceRepository.findById(id).orElse(null);
-        if (existing != null && (existing.isDefault() || username.equals(existing.getOwner()))) {
+        DataSource existingDataSource = dataSourceRepository.findById(id).orElse(null);
+        if (existingDataSource != null) {
+            if (username != null && !existingDataSource.getOwner().equals(username) && !existingDataSource.isDefault()) {
+                throw new RuntimeException("无权修改此数据源");
+            }
             dataSource.setId(id);
             if (username != null) {
                 dataSource.setOwner(username);
             }
             return dataSourceRepository.save(dataSource);
         }
-        throw new IllegalArgumentException("Invalid data source or permission denied");
+        return null;
+    }
+
+    @GetMapping("/status")
+    public List<Map<String, Object>> getDataSourceStatus() {
+        List<Map<String, Object>> statusList = new ArrayList<>();
+        List<DataSource> dataSources = dataSourceRepository.findAll();
+        
+        for (DataSource dataSource : dataSources) {
+            Map<String, Object> status = new HashMap<>();
+            status.put("id", dataSource.getId());
+            status.put("name", dataSource.getName());
+            status.put("url", dataSource.getUri());
+            
+            // 检查连接状态
+            String connectionStatus = dataSource.getConnectionStatus();
+            if (connectionStatus == null || connectionStatus.isEmpty()) {
+                // 如果没有状态记录，进行测试
+                boolean isConnected = mongoConnectionUtil.testConnection(dataSource);
+                connectionStatus = isConnected ? "connected" : "disconnected";
+                
+                // 更新数据库中的状态
+                dataSource.setConnectionStatus(connectionStatus);
+                dataSource.setLastTestTime(new Date());
+                dataSourceRepository.save(dataSource);
+            }
+            
+            status.put("status", connectionStatus);
+            status.put("lastTestTime", dataSource.getLastTestTime());
+            
+            statusList.add(status);
+        }
+        
+        return statusList;
     }
 
     private String getUsernameFromToken(String auth) {

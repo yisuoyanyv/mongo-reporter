@@ -6,6 +6,7 @@ import com.mongo.reporter.backend.repository.ReportConfigRepository;
 import com.mongo.reporter.backend.util.MongoConnectionUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import io.jsonwebtoken.Claims;
@@ -18,6 +19,8 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.MongoIterable;
 import com.mongodb.MongoException;
+import java.time.LocalDateTime;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/report")
@@ -279,15 +282,36 @@ public class ReportController {
 
     // 新增：搜索报表
     @GetMapping("/configs/search")
-    public List<ReportConfig> searchReports(@RequestParam String keyword,
-                                          @RequestParam(required = false) String category,
-                                          @RequestParam(required = false) List<String> tags,
-                                          @RequestHeader(value = "Authorization", required = false) String auth) {
-        String username = getUsernameFromToken(auth);
-        if (username != null) {
-            return reportConfigRepository.searchReportsByKeywordAndFilters(keyword, category, tags, username);
+    public ResponseEntity<List<ReportConfig>> searchReports(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) List<String> tags,
+            @RequestParam(required = false) String status,
+            @RequestHeader("Authorization") String auth) {
+        try {
+            String username = getUsernameFromToken(auth);
+            if (username == null) {
+                return ResponseEntity.status(401).build();
+            }
+
+            List<ReportConfig> reports;
+            if (keyword != null || category != null || (tags != null && !tags.isEmpty()) || status != null) {
+                reports = reportConfigRepository.searchReportsByKeywordAndFilters(keyword, category, tags, username);
+                
+                // 状态筛选
+                if (status != null) {
+                    reports = reports.stream()
+                            .filter(report -> status.equals(report.getStatus()))
+                            .collect(Collectors.toList());
+                }
+            } else {
+                reports = reportConfigRepository.findByOwnerOrPublicShareTrue(username);
+            }
+
+            return ResponseEntity.ok(reports);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).build();
         }
-        return reportConfigRepository.searchPublicReportsByKeywordAndFilters(keyword, category, tags);
     }
 
     @GetMapping("/configs/{id}")
@@ -361,6 +385,309 @@ public class ReportController {
         ReportConfig report = reportConfigRepository.findById(id).orElse(null);
         if (report != null && (report.isPublicShare() || username.equals(report.getOwner()))) {
             reportConfigRepository.deleteById(id);
+        }
+    }
+
+    // 新增：批量操作 - 批量发布
+    @PutMapping("/configs/batch/publish")
+    public ResponseEntity<Map<String, Object>> batchPublish(@RequestBody List<String> reportIds,
+                                                           @RequestHeader("Authorization") String auth) {
+        try {
+            String username = getUsernameFromToken(auth);
+            if (username == null) {
+                return ResponseEntity.status(401).build();
+            }
+
+            int successCount = 0;
+            int failCount = 0;
+            List<String> errors = new ArrayList<>();
+
+            for (String reportId : reportIds) {
+                try {
+                    Optional<ReportConfig> reportOpt = reportConfigRepository.findById(reportId);
+                    if (reportOpt.isPresent()) {
+                        ReportConfig report = reportOpt.get();
+                        if (username.equals(report.getOwner())) {
+                            report.setStatus("published");
+                            report.setUpdatedAt(LocalDateTime.now().toString());
+                            reportConfigRepository.save(report);
+                            successCount++;
+                        } else {
+                            failCount++;
+                            errors.add("报表 " + report.getName() + " 权限不足");
+                        }
+                    } else {
+                        failCount++;
+                        errors.add("报表 " + reportId + " 不存在");
+                    }
+                } catch (Exception e) {
+                    failCount++;
+                    errors.add("报表 " + reportId + " 操作失败: " + e.getMessage());
+                }
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("successCount", successCount);
+            result.put("failCount", failCount);
+            result.put("errors", errors);
+
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).build();
+        }
+    }
+
+    // 新增：批量操作 - 批量归档
+    @PutMapping("/configs/batch/archive")
+    public ResponseEntity<Map<String, Object>> batchArchive(@RequestBody List<String> reportIds,
+                                                           @RequestHeader("Authorization") String auth) {
+        try {
+            String username = getUsernameFromToken(auth);
+            if (username == null) {
+                return ResponseEntity.status(401).build();
+            }
+
+            int successCount = 0;
+            int failCount = 0;
+            List<String> errors = new ArrayList<>();
+
+            for (String reportId : reportIds) {
+                try {
+                    Optional<ReportConfig> reportOpt = reportConfigRepository.findById(reportId);
+                    if (reportOpt.isPresent()) {
+                        ReportConfig report = reportOpt.get();
+                        if (username.equals(report.getOwner())) {
+                            report.setStatus("archived");
+                            report.setUpdatedAt(LocalDateTime.now().toString());
+                            reportConfigRepository.save(report);
+                            successCount++;
+                        } else {
+                            failCount++;
+                            errors.add("报表 " + report.getName() + " 权限不足");
+                        }
+                    } else {
+                        failCount++;
+                        errors.add("报表 " + reportId + " 不存在");
+                    }
+                } catch (Exception e) {
+                    failCount++;
+                    errors.add("报表 " + reportId + " 操作失败: " + e.getMessage());
+                }
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("successCount", successCount);
+            result.put("failCount", failCount);
+            result.put("errors", errors);
+
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).build();
+        }
+    }
+
+    // 新增：批量操作 - 批量删除
+    @DeleteMapping("/configs/batch/delete")
+    public ResponseEntity<Map<String, Object>> batchDelete(@RequestBody List<String> reportIds,
+                                                          @RequestHeader("Authorization") String auth) {
+        try {
+            String username = getUsernameFromToken(auth);
+            if (username == null) {
+                return ResponseEntity.status(401).build();
+            }
+
+            int successCount = 0;
+            int failCount = 0;
+            List<String> errors = new ArrayList<>();
+
+            for (String reportId : reportIds) {
+                try {
+                    Optional<ReportConfig> reportOpt = reportConfigRepository.findById(reportId);
+                    if (reportOpt.isPresent()) {
+                        ReportConfig report = reportOpt.get();
+                        if (username.equals(report.getOwner())) {
+                            reportConfigRepository.deleteById(reportId);
+                            successCount++;
+                        } else {
+                            failCount++;
+                            errors.add("报表 " + report.getName() + " 权限不足");
+                        }
+                    } else {
+                        failCount++;
+                        errors.add("报表 " + reportId + " 不存在");
+                    }
+                } catch (Exception e) {
+                    failCount++;
+                    errors.add("报表 " + reportId + " 删除失败: " + e.getMessage());
+                }
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("successCount", successCount);
+            result.put("failCount", failCount);
+            result.put("errors", errors);
+
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).build();
+        }
+    }
+
+    // 新增：复制报表
+    @PostMapping("/configs/{id}/duplicate")
+    public ResponseEntity<ReportConfig> duplicateReport(@PathVariable String id,
+                                                       @RequestHeader("Authorization") String auth) {
+        try {
+            String username = getUsernameFromToken(auth);
+            if (username == null) {
+                return ResponseEntity.status(401).build();
+            }
+
+            Optional<ReportConfig> reportOpt = reportConfigRepository.findById(id);
+            if (reportOpt.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            ReportConfig originalReport = reportOpt.get();
+            if (!username.equals(originalReport.getOwner()) && !originalReport.isPublicShare()) {
+                return ResponseEntity.status(403).build();
+            }
+
+            // 创建副本
+            ReportConfig duplicatedReport = new ReportConfig();
+            duplicatedReport.setName(originalReport.getName() + " (副本)");
+            duplicatedReport.setDescription(originalReport.getDescription());
+            duplicatedReport.setOwner(username);
+            duplicatedReport.setDataSourceUri(originalReport.getDataSourceUri());
+            duplicatedReport.setCollection(originalReport.getCollection());
+            duplicatedReport.setWidgets(originalReport.getWidgets());
+            duplicatedReport.setFieldMapping(originalReport.getFieldMapping());
+            duplicatedReport.setFilters(originalReport.getFilters());
+            duplicatedReport.setPublicShare(false);
+            duplicatedReport.setCategory(originalReport.getCategory());
+            duplicatedReport.setTags(originalReport.getTags());
+            duplicatedReport.setStatus("draft");
+            duplicatedReport.setVersion("1.0.0");
+            duplicatedReport.setCreatedAt(LocalDateTime.now().toString());
+            duplicatedReport.setUpdatedAt(LocalDateTime.now().toString());
+
+            ReportConfig savedReport = reportConfigRepository.save(duplicatedReport);
+            return ResponseEntity.ok(savedReport);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).build();
+        }
+    }
+
+    // 新增：分享报表
+    @PostMapping("/configs/{id}/share")
+    public ResponseEntity<ReportConfig> shareReport(@PathVariable String id,
+                                                   @RequestHeader("Authorization") String auth) {
+        try {
+            String username = getUsernameFromToken(auth);
+            if (username == null) {
+                return ResponseEntity.status(401).build();
+            }
+
+            Optional<ReportConfig> reportOpt = reportConfigRepository.findById(id);
+            if (reportOpt.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            ReportConfig report = reportOpt.get();
+            if (!username.equals(report.getOwner())) {
+                return ResponseEntity.status(403).build();
+            }
+
+            report.setPublicShare(true);
+            report.setUpdatedAt(LocalDateTime.now().toString());
+            ReportConfig savedReport = reportConfigRepository.save(report);
+            return ResponseEntity.ok(savedReport);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).build();
+        }
+    }
+
+    // 新增：获取版本历史
+    @GetMapping("/configs/{id}/versions")
+    public ResponseEntity<List<Map<String, Object>>> getVersionHistory(@PathVariable String id,
+                                                                      @RequestHeader("Authorization") String auth) {
+        try {
+            String username = getUsernameFromToken(auth);
+            if (username == null) {
+                return ResponseEntity.status(401).build();
+            }
+
+            Optional<ReportConfig> reportOpt = reportConfigRepository.findById(id);
+            if (reportOpt.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            ReportConfig report = reportOpt.get();
+            if (!username.equals(report.getOwner()) && !report.isPublicShare()) {
+                return ResponseEntity.status(403).build();
+            }
+
+            // 模拟版本历史数据
+            List<Map<String, Object>> versions = new ArrayList<>();
+            
+            // 当前版本
+            Map<String, Object> currentVersion = new HashMap<>();
+            currentVersion.put("version", report.getVersion() != null ? report.getVersion() : "1.0.0");
+            currentVersion.put("createdAt", report.getUpdatedAt());
+            currentVersion.put("description", "当前版本");
+            currentVersion.put("reportId", report.getId());
+            versions.add(currentVersion);
+
+            // 模拟历史版本
+            if (report.getVersion() != null && !report.getVersion().equals("1.0.0")) {
+                Map<String, Object> previousVersion = new HashMap<>();
+                previousVersion.put("version", "1.0.0");
+                previousVersion.put("createdAt", report.getCreatedAt());
+                previousVersion.put("description", "初始版本");
+                previousVersion.put("reportId", report.getId());
+                versions.add(previousVersion);
+            }
+
+            return ResponseEntity.ok(versions);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).build();
+        }
+    }
+
+    // 新增：恢复版本
+    @PostMapping("/configs/{id}/restore")
+    public ResponseEntity<ReportConfig> restoreVersion(@PathVariable String id,
+                                                      @RequestBody Map<String, String> request,
+                                                      @RequestHeader("Authorization") String auth) {
+        try {
+            String username = getUsernameFromToken(auth);
+            if (username == null) {
+                return ResponseEntity.status(401).build();
+            }
+
+            Optional<ReportConfig> reportOpt = reportConfigRepository.findById(id);
+            if (reportOpt.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            ReportConfig report = reportOpt.get();
+            if (!username.equals(report.getOwner())) {
+                return ResponseEntity.status(403).build();
+            }
+
+            String version = request.get("version");
+            if (version == null) {
+                return ResponseEntity.badRequest().build();
+            }
+
+            // 这里应该实现真正的版本恢复逻辑
+            // 目前只是更新版本号
+            report.setVersion(version);
+            report.setUpdatedAt(LocalDateTime.now().toString());
+            ReportConfig savedReport = reportConfigRepository.save(report);
+            return ResponseEntity.ok(savedReport);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).build();
         }
     }
 
@@ -579,10 +906,10 @@ public class ReportController {
         for (Map<String, Object> item : data) {
             String xValue = String.valueOf(item.get(xField));
             String seriesValue = seriesField != null ? String.valueOf(item.get(seriesField)) : "default";
-            Number yValue = (Number) item.get(yField);
+            Double yValue = parseNumber(item.get(yField));
             
             xAxisValues.add(xValue);
-            seriesData.computeIfAbsent(seriesValue, k -> new HashMap<>()).put(xValue, yValue != null ? yValue.doubleValue() : 0.0);
+            seriesData.computeIfAbsent(seriesValue, k -> new HashMap<>()).put(xValue, yValue != null ? yValue : 0.0);
         }
         
         List<String> xAxis = new ArrayList<>(xAxisValues);
@@ -629,9 +956,12 @@ public class ReportController {
                 if ("count".equals(aggregation)) {
                     // 对于计数统计，任何非空值都算作1
                     groupedData.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(1);
-                } else if (valueObj instanceof Number) {
-                    // 对于数值统计，必须是数字类型
-                    groupedData.computeIfAbsent(groupKey, k -> new ArrayList<>()).add((Number) valueObj);
+                } else {
+                    // 对于数值统计，使用parseNumber方法安全转换
+                    Double numValue = parseNumber(valueObj);
+                    if (numValue != null) {
+                        groupedData.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(numValue);
+                    }
                 }
             }
         }
@@ -659,7 +989,14 @@ public class ReportController {
         }
         
         List<String> xAxis = aggregatedData.stream().map(item -> (String) item.get("name")).collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
-        List<Number> yAxis = aggregatedData.stream().map(item -> (Number) item.get("value")).collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
+        List<Number> yAxis = aggregatedData.stream().map(item -> {
+            Object value = item.get("value");
+            if (value instanceof Number) {
+                return (Number) value;
+            } else {
+                return parseNumber(value);
+            }
+        }).collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
         
         Map<String, Object> series = new HashMap<>();
         series.put("name", aggregation + "(" + yField + ")");
@@ -716,12 +1053,12 @@ public class ReportController {
         
         for (Map<String, Object> item : data) {
             String name = String.valueOf(item.get(nameField));
-            Number value = (Number) item.get(valueField);
+            Double value = parseNumber(item.get(valueField));
             
             if (enableStats != null && enableStats && "count".equals(aggregation)) {
                 aggregatedData.merge(name, 1.0, Double::sum);
             } else {
-                aggregatedData.merge(name, value != null ? value.doubleValue() : 0.0, Double::sum);
+                aggregatedData.merge(name, value != null ? value : 0.0, Double::sum);
             }
         }
         
@@ -763,17 +1100,17 @@ public class ReportController {
         Map<String, List<List<Object>>> seriesData = new HashMap<>();
         
         for (Map<String, Object> item : data) {
-            Number xValue = (Number) item.get(xField);
-            Number yValue = (Number) item.get(yField);
-            Number sizeValue = sizeField != null ? (Number) item.get(sizeField) : 10;
+            Double xValue = parseNumber(item.get(xField));
+            Double yValue = parseNumber(item.get(yField));
+            Double sizeValue = sizeField != null ? parseNumber(item.get(sizeField)) : 10.0;
             String seriesValue = seriesField != null ? String.valueOf(item.get(seriesField)) : "default";
             
             if (xValue != null && yValue != null) {
                 List<Object> point = new ArrayList<>();
-                point.add(xValue.doubleValue());
-                point.add(yValue.doubleValue());
+                point.add(xValue);
+                point.add(yValue);
                 if (sizeField != null && sizeValue != null) {
-                    point.add(sizeValue.doubleValue());
+                    point.add(sizeValue);
                 }
                 
                 seriesData.computeIfAbsent(seriesValue, k -> new ArrayList<>()).add(point);
@@ -798,15 +1135,15 @@ public class ReportController {
     
     private Map<String, Object> processGaugeChart(List<Map<String, Object>> data, Map<String, Object> widget) {
         String valueField = (String) widget.get("valueField");
-        Number min = (Number) widget.get("min");
-        Number max = (Number) widget.get("max");
+        Double min = parseNumber(widget.get("min"));
+        Double max = parseNumber(widget.get("max"));
         Boolean enableStats = (Boolean) widget.get("enableStats");
         String aggregation = (String) widget.get("aggregation");
         
         // 收集数值数据
         List<Number> values = new ArrayList<>();
         for (Map<String, Object> item : data) {
-            Number value = (Number) item.get(valueField);
+            Double value = parseNumber(item.get(valueField));
             if (value != null) {
                 values.add(value);
             }
@@ -825,8 +1162,8 @@ public class ReportController {
             displayName = "平均值";
         }
         
-        double minValue = min != null ? min.doubleValue() : 0.0;
-        double maxValue = max != null ? max.doubleValue() : 100.0;
+        double minValue = min != null ? min : 0.0;
+        double maxValue = max != null ? max : 100.0;
         
         List<Map<String, Object>> seriesData = new ArrayList<>();
         Map<String, Object> item = new HashMap<>();
@@ -856,12 +1193,12 @@ public class ReportController {
         
         for (Map<String, Object> item : data) {
             String name = String.valueOf(item.get(nameField));
-            Number value = (Number) item.get(valueField);
+            Double value = parseNumber(item.get(valueField));
             
             if (enableStats != null && enableStats && "count".equals(aggregation)) {
                 aggregatedData.merge(name, 1.0, Double::sum);
             } else {
-                aggregatedData.merge(name, value != null ? value.doubleValue() : 0.0, Double::sum);
+                aggregatedData.merge(name, value != null ? value : 0.0, Double::sum);
             }
         }
         
@@ -909,12 +1246,12 @@ public class ReportController {
         
         for (Map<String, Object> item : data) {
             String name = String.valueOf(item.get(nameField));
-            Number value = (Number) item.get(valueField);
+            Double value = parseNumber(item.get(valueField));
             String series = seriesField != null ? String.valueOf(item.get(seriesField)) : "default";
             
             if (value != null) {
                 indicators.add(name);
-                seriesData.computeIfAbsent(series, k -> new HashMap<>()).merge(name, value.doubleValue(), Double::sum);
+                seriesData.computeIfAbsent(series, k -> new HashMap<>()).merge(name, value, Double::sum);
             }
         }
         
@@ -950,11 +1287,12 @@ public class ReportController {
             seriesItem.put("name", entry.getKey());
             seriesItem.put("type", "radar");
             
-            List<Double> values = new ArrayList<>();
+            List<Double> seriesValues = new ArrayList<>();
             for (String indicator : indicatorList) {
-                values.add(entry.getValue().getOrDefault(indicator, 0.0));
+                seriesValues.add(entry.getValue().getOrDefault(indicator, 0.0));
             }
-            seriesItem.put("data", values);
+            seriesItem.put("data", seriesValues);
+            
             series.add(seriesItem);
         }
         

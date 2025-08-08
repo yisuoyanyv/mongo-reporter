@@ -23,6 +23,7 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/system/**").permitAll()
                 .requestMatchers("/api/datasource/**").permitAll()
                 .requestMatchers("/api/report/collections").permitAll()
                 .requestMatchers("/api/report/fields").permitAll()

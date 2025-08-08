@@ -36,21 +36,33 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
-      path: '/designer',
-      name: 'designer',
+      path: '/reports/design',
+      name: 'report-design',
       component: ReportDesigner,
       meta: { requiresAuth: true }
     },
     {
-      path: '/designer/:id',
-      name: 'designer-edit',
+      path: '/reports/design/:id',
+      name: 'report-design-edit',
       component: ReportDesigner,
       meta: { requiresAuth: true }
     },
     {
-      path: '/viewer/:id',
-      name: 'viewer',
+      path: '/reports/view/:id',
+      name: 'report-view',
       component: ReportViewer,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/templates',
+      name: 'templates',
+      component: () => import('../views/ReportTemplateManager.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/templates/:id/edit',
+      name: 'template-edit',
+      component: () => import('../views/ReportTemplateEditor.vue'),
       meta: { requiresAuth: true }
     },
     {
@@ -69,6 +81,12 @@ const router = createRouter({
       path: '/settings',
       name: 'settings',
       component: () => import('../views/SystemSettings.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/monitor',
+      name: 'monitor',
+      component: () => import('../views/SystemMonitor.vue'),
       meta: { requiresAuth: true }
     },
     {

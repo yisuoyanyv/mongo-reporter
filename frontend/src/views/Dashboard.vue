@@ -1,12 +1,43 @@
 <template>
   <div class="dashboard">
-    <!-- 统计卡片 - 响应式布局 -->
-    <el-row :gutter="20" class="stats-row">
-      <el-col :xs="12" :sm="6" v-for="stat in stats" :key="stat.title">
-        <el-card class="stat-card" :body-style="{ padding: '15px' }">
+    <el-row :gutter="20">
+      <!-- 欢迎区域 -->
+      <el-col :span="24">
+        <el-card class="welcome-card">
+          <div class="welcome-content">
+            <div class="welcome-text">
+              <h2>欢迎使用 MongoReporter</h2>
+              <p>MongoDB报表生成系统 - 让数据可视化变得简单</p>
+            </div>
+            <div class="welcome-actions">
+              <el-button type="primary" @click="$router.push('/designer')">
+                <el-icon><Plus /></el-icon>
+                创建新报表
+              </el-button>
+              <el-button @click="$router.push('/reports')">
+                <el-icon><Document /></el-icon>
+                查看所有报表
+              </el-button>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- 性能监控组件 -->
+    <el-row :gutter="20" style="margin-top: 20px;">
+      <el-col :span="24">
+        <PerformanceMonitor />
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="20" style="margin-top: 20px;">
+      <!-- 统计卡片 -->
+      <el-col :xs="24" :sm="12" :md="6" v-for="stat in stats" :key="stat.title">
+        <el-card class="stat-card" :class="stat.type">
           <div class="stat-content">
-            <div class="stat-icon" :style="{ backgroundColor: stat.color }">
-              <el-icon :size="20" color="white">
+            <div class="stat-icon">
+              <el-icon :size="24">
                 <component :is="stat.icon" />
               </el-icon>
             </div>
@@ -20,302 +51,727 @@
     </el-row>
 
     <el-row :gutter="20" style="margin-top: 20px;">
-      <!-- 最近报表 - 响应式布局 -->
-      <el-col :xs="24" :sm="12">
-        <el-card class="content-card">
+      <!-- 图表区域 -->
+      <el-col :span="12">
+        <el-card>
           <template #header>
             <div class="card-header">
-              <span>最近报表</span>
-              <el-button type="primary" size="small" @click="$router.push('/reports')">
-                查看全部
-              </el-button>
+              <span>报表创建趋势</span>
+              <el-button link @click="refreshChartData('reportTrend')">刷新</el-button>
             </div>
           </template>
-          <div v-if="recentReports.length === 0" class="empty-state">
-            <el-empty description="暂无报表" />
-          </div>
-          <div v-else class="report-list">
-            <div v-for="report in recentReports" :key="report.id" class="report-item">
-              <div class="report-info">
-                <div class="report-name">{{ report.name }}</div>
-                <div class="report-desc">{{ report.description }}</div>
-                <div class="report-meta">
-                  <el-tag v-if="report.category" size="small" type="primary">
-                    {{ report.category }}
-                  </el-tag>
-                  <span class="report-time">{{ formatDate(report.updatedAt) }}</span>
-                </div>
-              </div>
-              <div class="report-actions">
-                <el-button size="small" @click="viewReport(report)">查看</el-button>
-                <el-button size="small" type="primary" @click="editReport(report)">编辑</el-button>
-              </div>
-            </div>
+          <div class="chart-container">
+            <v-chart :option="reportTrendOption" :style="{ height: '300px' }" />
           </div>
         </el-card>
       </el-col>
 
-      <!-- 数据源状态 - 响应式布局 -->
-      <el-col :xs="24" :sm="12">
-        <el-card class="content-card">
+      <el-col :span="12">
+        <el-card>
           <template #header>
             <div class="card-header">
-              <span>数据源状态</span>
-              <el-button type="primary" size="small" @click="$router.push('/datasources')">
-                管理数据源
-              </el-button>
+              <span>用户活跃度</span>
+              <el-button link @click="refreshChartData('userActivity')">刷新</el-button>
             </div>
           </template>
-          <div v-if="dataSources.length === 0" class="empty-state">
-            <el-empty description="暂无数据源" />
-          </div>
-          <div v-else class="datasource-list">
-            <div v-for="ds in dataSources" :key="ds.id" class="datasource-item">
-              <div class="datasource-info">
-                <div class="datasource-name">{{ ds.name }}</div>
-                <div class="datasource-uri">{{ ds.uri }}</div>
-                <div class="datasource-status">
-                  <el-tag 
-                    :type="ds.connectionStatus === 'success' ? 'success' : 'danger'"
-                    size="small"
-                  >
-                    {{ ds.connectionStatus === 'success' ? '连接正常' : '连接异常' }}
-                  </el-tag>
-                </div>
-              </div>
-              <div class="datasource-actions">
-                <el-button size="small" @click="testConnection(ds)">测试</el-button>
-              </div>
-            </div>
+          <div class="chart-container">
+            <v-chart :option="userActivityOption" :style="{ height: '300px' }" />
           </div>
         </el-card>
       </el-col>
     </el-row>
 
     <el-row :gutter="20" style="margin-top: 20px;">
-      <!-- 快速操作 - 响应式布局 -->
-      <el-col :span="24">
-        <el-card class="quick-actions-card">
+      <!-- 报表分类统计 -->
+      <el-col :span="12">
+        <el-card>
           <template #header>
-            <span>快速操作</span>
+            <div class="card-header">
+              <span>报表分类统计</span>
+              <el-button link @click="refreshChartData('reportCategories')">刷新</el-button>
+            </div>
           </template>
-          <div class="quick-actions">
-            <el-button type="primary" size="large" @click="$router.push('/designer')" class="action-btn">
-              <el-icon><Plus /></el-icon>
-              <span class="action-text">新建报表</span>
-            </el-button>
-            <el-button type="success" size="large" @click="$router.push('/datasources')" class="action-btn">
-              <el-icon><Connection /></el-icon>
-              <span class="action-text">添加数据源</span>
-            </el-button>
-            <el-button type="warning" size="large" @click="showTemplateDialog" class="action-btn">
-              <el-icon><Document /></el-icon>
-              <span class="action-text">使用模板</span>
-            </el-button>
-            <el-button type="info" size="large" @click="showHelpDialog" class="action-btn">
-              <el-icon><QuestionFilled /></el-icon>
-              <span class="action-text">使用帮助</span>
-            </el-button>
+          <div class="chart-container">
+            <v-chart :option="reportCategoriesOption" :style="{ height: '300px' }" />
+          </div>
+        </el-card>
+      </el-col>
+
+      <!-- 系统性能监控 -->
+      <el-col :span="12">
+        <el-card>
+          <template #header>
+            <div class="card-header">
+              <span>系统性能监控</span>
+              <el-button link @click="refreshChartData('systemPerformance')">刷新</el-button>
+            </div>
+          </template>
+          <div class="chart-container">
+            <v-chart :option="systemPerformanceOption" :style="{ height: '300px' }" />
           </div>
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- 模板选择对话框 -->
-    <el-dialog v-model="templateDialogVisible" title="选择模板" width="90%" class="template-dialog">
-      <div class="template-list">
-        <el-card 
-          v-for="template in templates" 
-          :key="template.id" 
-          class="template-card"
-          @click="applyTemplate(template)"
-        >
-          <div class="template-info">
-            <h4>{{ template.name }}</h4>
-            <p>{{ template.description }}</p>
-            <div class="template-tags">
-              <el-tag v-for="tag in template.tags" :key="tag" size="small">
-                {{ tag }}
-              </el-tag>
+    <el-row :gutter="20" style="margin-top: 20px;">
+      <!-- 最近报表 -->
+      <el-col :span="12">
+        <el-card>
+          <template #header>
+            <div class="card-header">
+              <span>最近报表</span>
+              <el-button link @click="$router.push('/reports')">查看全部</el-button>
+            </div>
+          </template>
+          <div v-if="recentReports.length === 0" class="empty-state">
+            <el-empty description="暂无报表" />
+          </div>
+          <div v-else class="recent-reports">
+            <div v-for="report in recentReports" :key="report.id" class="report-item">
+              <div class="report-info">
+                <div class="report-name">{{ report.name }}</div>
+                <div class="report-meta">
+                  <el-tag v-if="report.publicShare" size="small" type="success">公开</el-tag>
+                  <el-tag v-else size="small" type="info">私有</el-tag>
+                  <span class="report-date">{{ formatDate(report.updatedAt) }}</span>
+                </div>
+              </div>
+              <div class="report-actions">
+                <el-button size="small" @click="viewReport(report.id)">查看</el-button>
+                <el-button size="small" @click="editReport(report.id)">编辑</el-button>
+              </div>
             </div>
           </div>
         </el-card>
-      </div>
-    </el-dialog>
+      </el-col>
 
-    <!-- 帮助对话框 -->
-    <el-dialog v-model="helpDialogVisible" title="使用帮助" width="90%" class="help-dialog">
-      <div class="help-content">
-        <h3>快速开始</h3>
-        <ol>
-          <li>添加数据源：在"数据源管理"中添加MongoDB连接</li>
-          <li>创建报表：点击"新建报表"开始设计</li>
-          <li>选择数据：选择数据源和集合</li>
-          <li>设计图表：拖拽组件到画布并配置</li>
-          <li>保存报表：填写信息并保存</li>
-        </ol>
-        
-        <h3>常用功能</h3>
-        <ul>
-          <li><strong>报表分类</strong>：使用分类和标签组织报表</li>
-          <li><strong>数据过滤</strong>：设置条件过滤数据</li>
-          <li><strong>图表配置</strong>：自定义图表样式和主题</li>
-          <li><strong>报表分享</strong>：生成分享链接供他人查看</li>
-          <li><strong>数据导出</strong>：支持PDF、Excel、图片导出</li>
-        </ul>
-      </div>
-    </el-dialog>
+      <!-- 系统信息 -->
+      <el-col :span="12">
+        <el-card>
+          <template #header>
+            <div class="card-header">
+              <span>系统信息</span>
+              <el-button link @click="refreshSystemInfo">刷新</el-button>
+            </div>
+          </template>
+          <div v-if="systemInfo" class="system-info">
+            <div class="info-item">
+              <span class="info-label">系统状态:</span>
+              <el-tag type="success">运行中</el-tag>
+            </div>
+            <div class="info-item">
+              <span class="info-label">版本:</span>
+              <span>{{ systemInfo.version }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Java版本:</span>
+              <span>{{ systemInfo.javaVersion }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">操作系统:</span>
+              <span>{{ systemInfo.osName }} {{ systemInfo.osVersion }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">启动时间:</span>
+              <span>{{ formatDate(systemInfo.startTime) }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">内存使用:</span>
+              <span>{{ formatMemory(systemInfo.totalMemory, systemInfo.freeMemory) }}</span>
+            </div>
+          </div>
+          <div v-else class="loading-state">
+            <el-skeleton :rows="5" animated />
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="20" style="margin-top: 20px;">
+      <!-- 快速操作 -->
+      <el-col :span="24">
+        <el-card>
+          <template #header>
+            <div class="card-header">
+              <span>快速操作</span>
+            </div>
+          </template>
+          <div class="quick-actions">
+            <el-button-group>
+              <el-button @click="$router.push('/datasources')">
+                <el-icon><Connection /></el-icon>
+                管理数据源
+              </el-button>
+              <el-button @click="$router.push('/designer')">
+                <el-icon><Edit /></el-icon>
+                设计报表
+              </el-button>
+              <el-button @click="$router.push('/reports')">
+                <el-icon><List /></el-icon>
+                报表列表
+              </el-button>
+              <el-button @click="exportAllReports">
+                <el-icon><Download /></el-icon>
+                导出报表
+              </el-button>
+            </el-button-group>
+          </div>
+          
+          <!-- 新增：快速报表创建 -->
+          <div class="quick-report-creation" style="margin-top: 20px;">
+            <h4>快速创建报表</h4>
+            <div class="quick-report-templates">
+              <el-card 
+                v-for="template in quickTemplates" 
+                :key="template.id" 
+                class="quick-template-card"
+                @click="createQuickReport(template)"
+              >
+                <div class="template-icon">
+                  <el-icon :size="32">
+                    <component :is="template.icon" />
+                  </el-icon>
+                </div>
+                <div class="template-info">
+                  <div class="template-name">{{ template.name }}</div>
+                  <div class="template-desc">{{ template.description }}</div>
+                </div>
+              </el-card>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- 新增：实时通知区域 -->
+    <el-row :gutter="20" style="margin-top: 20px;">
+      <el-col :span="24">
+        <el-card>
+          <template #header>
+            <div class="card-header">
+              <span>系统通知</span>
+              <div class="notification-actions">
+                <el-button link @click="markAllAsRead">全部标记为已读</el-button>
+                <el-button link @click="clearNotifications">清空通知</el-button>
+              </div>
+            </div>
+          </template>
+          <div v-if="notifications.length === 0" class="empty-state">
+            <el-empty description="暂无通知" />
+          </div>
+          <div v-else class="notifications">
+            <div v-for="notification in notifications" :key="notification.id" 
+                 class="notification-item" :class="{ 'unread': !notification.read }">
+              <div class="notification-icon">
+                <el-icon :size="20" :class="notification.type">
+                  <component :is="notification.icon" />
+                </el-icon>
+              </div>
+              <div class="notification-content">
+                <div class="notification-title">{{ notification.title }}</div>
+                <div class="notification-message">{{ notification.message }}</div>
+                <div class="notification-time">{{ formatTime(notification.time) }}</div>
+              </div>
+              <div class="notification-actions">
+                <el-button v-if="!notification.read" size="small" link @click="markAsRead(notification.id)">
+                  标记已读
+                </el-button>
+                <el-button size="small" link @click="dismissNotification(notification.id)">
+                  关闭
+                </el-button>
+              </div>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- 新增：系统状态监控 -->
+    <el-row :gutter="20" style="margin-top: 20px;">
+      <el-col :span="12">
+        <el-card>
+          <template #header>
+            <div class="card-header">
+              <span>数据源状态</span>
+              <el-button link @click="refreshDataSourceStatus">刷新</el-button>
+            </div>
+          </template>
+          <div v-if="dataSourceStatus.length === 0" class="empty-state">
+            <el-empty description="暂无数据源" />
+          </div>
+          <div v-else class="datasource-status">
+            <div v-for="ds in dataSourceStatus" :key="ds.id" class="datasource-item">
+              <div class="datasource-info">
+                <div class="datasource-name">{{ ds.name }}</div>
+                <div class="datasource-url">{{ ds.url }}</div>
+              </div>
+              <div class="datasource-status">
+                <el-tag :type="ds.status === 'connected' ? 'success' : 'danger'" size="small">
+                  {{ ds.status === 'connected' ? '已连接' : '连接失败' }}
+                </el-tag>
+              </div>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+
+      <el-col :span="12">
+        <el-card>
+          <template #header>
+            <div class="card-header">
+              <span>最近活动</span>
+              <el-button link @click="refreshRecentActivity">刷新</el-button>
+            </div>
+          </template>
+          <div v-if="recentActivity.length === 0" class="empty-state">
+            <el-empty description="暂无活动" />
+          </div>
+          <div v-else class="recent-activity">
+            <div v-for="activity in recentActivity" :key="activity.id" class="activity-item">
+              <div class="activity-icon">
+                <el-icon :size="16">
+                  <component :is="activity.icon" />
+                </el-icon>
+              </div>
+              <div class="activity-content">
+                <div class="activity-text">{{ activity.text }}</div>
+                <div class="activity-time">{{ formatTime(activity.time) }}</div>
+              </div>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { 
-  Document, 
-  Connection, 
-  PieChart, 
-  DataAnalysis,
-  Plus,
-  QuestionFilled
+  Plus, Document, Connection, Edit, List, Download,
+  PieChart, User, DataAnalysis, Files
 } from '@element-plus/icons-vue'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { LineChart, BarChart, PieChart as EChartsPieChart } from 'echarts/charts'
+import {
+  TitleComponent,
+  TooltipComponent,
+  LegendComponent,
+  GridComponent
+} from 'echarts/components'
+import VChart from 'vue-echarts'
+import axios from 'axios'
+import PerformanceMonitor from '@/components/PerformanceMonitor.vue'
+
+// 注册ECharts组件
+use([
+  CanvasRenderer,
+  LineChart,
+  BarChart,
+  EChartsPieChart,
+  TitleComponent,
+  TooltipComponent,
+  LegendComponent,
+  GridComponent
+])
 
 const router = useRouter()
 
-// 统计数据
+// 响应式数据
 const stats = ref([
-  { title: '总报表数', value: 0, icon: 'Document', color: '#409EFF' },
-  { title: '数据源数', value: 0, icon: 'Connection', color: '#67C23A' },
-  { title: '图表总数', value: 0, icon: 'PieChart', color: '#E6A23C' },
-  { title: '今日访问', value: 0, icon: 'DataAnalysis', color: '#F56C6C' }
+  { title: '总报表数', value: 0, icon: 'Files', type: 'primary' },
+  { title: '公开报表', value: 0, icon: 'Document', type: 'success' },
+  { title: '数据源', value: 0, icon: 'DataAnalysis', type: 'warning' },
+  { title: '用户数', value: 0, icon: 'User', type: 'info' }
 ])
 
-// 数据
 const recentReports = ref([])
-const dataSources = ref([])
-const templates = ref([
-  {
-    id: 'sales-dashboard',
-    name: '销售仪表板',
-    description: '包含销售趋势、产品分析、地区分布等图表',
-    tags: ['销售', '仪表板', '趋势分析']
-  },
-  {
-    id: 'user-analysis',
-    name: '用户分析报表',
-    description: '用户行为分析、活跃度统计、留存分析',
-    tags: ['用户', '分析', '行为']
-  },
-  {
-    id: 'product-report',
-    name: '产品报表',
-    description: '产品销量、库存、分类统计',
-    tags: ['产品', '库存', '销量']
-  }
+const systemInfo = ref(null)
+
+// 图表数据
+const reportTrendOption = ref({})
+const userActivityOption = ref({})
+const reportCategoriesOption = ref({})
+const systemPerformanceOption = ref({})
+
+// 通知数据
+const notifications = ref([])
+const dataSourceStatus = ref([])
+const recentActivity = ref([])
+
+// 新增：快速报表模板
+const quickTemplates = ref([
+  { id: 1, name: '用户行为分析', description: '分析用户在网站上的行为模式', icon: 'User' },
+  { id: 2, name: '销售数据报表', description: '统计每日、每周、每月的销售数据', icon: 'PieChart' },
+  { id: 3, name: '网站访问统计', description: '监控网站流量和用户访问情况', icon: 'DataAnalysis' },
+  { id: 4, name: '错误日志报告', description: '收集和分析系统错误日志', icon: 'Files' }
 ])
 
-// 对话框状态
-const templateDialogVisible = ref(false)
-const helpDialogVisible = ref(false)
+// 自动刷新定时器
+let refreshTimer = null
 
-// 格式化日期
-const formatDate = (dateString) => {
-  if (!dateString) return '-'
+// 获取系统统计信息
+const fetchSystemStats = async () => {
   try {
-    const date = new Date(dateString)
-    return date.toLocaleString('zh-CN', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
+    const response = await axios.get('/api/system/stats')
+    const data = response.data
+    
+    stats.value[0].value = data.reports.total
+    stats.value[1].value = data.reports.public
+    stats.value[2].value = data.dataSources
+    stats.value[3].value = data.users
   } catch (error) {
-    return dateString
+    console.error('获取系统统计失败:', error)
   }
 }
 
-// 加载数据
-const loadData = async () => {
+// 获取最近报表
+const fetchRecentReports = async () => {
   try {
-    // 加载报表列表
-    const reportsResponse = await axios.get('/api/report/configs')
-    const reports = reportsResponse.data || []
-    recentReports.value = reports.slice(0, 5)
-    stats.value[0].value = reports.length
-
-    // 加载数据源列表
-    const datasourcesResponse = await axios.get('/api/datasource')
-    dataSources.value = datasourcesResponse.data || []
-    stats.value[1].value = dataSources.value.length
-
-    // 计算图表总数
-    const totalWidgets = reports.reduce((sum, report) => {
-      return sum + (report.widgets ? report.widgets.length : 0)
-    }, 0)
-    stats.value[2].value = totalWidgets
-
-    // 模拟今日访问数
-    stats.value[3].value = Math.floor(Math.random() * 50) + 10
-
+    const response = await axios.get('/api/report/configs')
+    const reports = response.data
+    recentReports.value = reports.slice(0, 5) // 只显示最近5个
   } catch (error) {
-    console.error('加载仪表板数据失败:', error)
-    ElMessage.error('加载数据失败')
+    console.error('获取最近报表失败:', error)
   }
+}
+
+// 获取系统信息
+const fetchSystemInfo = async () => {
+  try {
+    const response = await axios.get('/api/system/info')
+    systemInfo.value = response.data
+  } catch (error) {
+    console.error('获取系统信息失败:', error)
+  }
+}
+
+// 获取报表趋势数据
+const fetchReportTrend = async () => {
+  try {
+    const response = await axios.get('/api/system/charts/report-trend')
+    const data = response.data
+    
+    reportTrendOption.value = {
+      title: {
+        text: data.title,
+        left: 'center'
+      },
+      tooltip: {
+        trigger: 'axis'
+      },
+      xAxis: {
+        type: 'category',
+        data: data.dates
+      },
+      yAxis: {
+        type: 'value'
+      },
+      series: [{
+        data: data.reportCounts,
+        type: 'line',
+        smooth: true,
+        areaStyle: {
+          opacity: 0.3
+        }
+      }]
+    }
+  } catch (error) {
+    console.error('获取报表趋势数据失败:', error)
+  }
+}
+
+// 获取用户活跃度数据
+const fetchUserActivity = async () => {
+  try {
+    const response = await axios.get('/api/system/charts/user-activity')
+    const data = response.data
+    
+    userActivityOption.value = {
+      title: {
+        text: data.title,
+        left: 'center'
+      },
+      tooltip: {
+        trigger: 'axis'
+      },
+      xAxis: {
+        type: 'category',
+        data: data.timeSlots
+      },
+      yAxis: {
+        type: 'value'
+      },
+      series: [{
+        data: data.activeUsers,
+        type: 'bar',
+        itemStyle: {
+          color: '#409EFF'
+        }
+      }]
+    }
+  } catch (error) {
+    console.error('获取用户活跃度数据失败:', error)
+  }
+}
+
+// 获取报表分类数据
+const fetchReportCategories = async () => {
+  try {
+    const response = await axios.get('/api/system/charts/report-categories')
+    const data = response.data
+    
+    reportCategoriesOption.value = {
+      title: {
+        text: data.title,
+        left: 'center'
+      },
+      tooltip: {
+        trigger: 'item'
+      },
+      series: [{
+        type: 'pie',
+        radius: '50%',
+        data: data.categories.map((category, index) => ({
+          name: category,
+          value: data.counts[index]
+        })),
+        emphasis: {
+          itemStyle: {
+            shadowBlur: 10,
+            shadowOffsetX: 0,
+            shadowColor: 'rgba(0, 0, 0, 0.5)'
+          }
+        }
+      }]
+    }
+  } catch (error) {
+    console.error('获取报表分类数据失败:', error)
+  }
+}
+
+// 获取系统性能数据
+const fetchSystemPerformance = async () => {
+  try {
+    const response = await axios.get('/api/system/charts/system-performance')
+    const data = response.data
+    
+    systemPerformanceOption.value = {
+      title: {
+        text: data.title,
+        left: 'center'
+      },
+      tooltip: {
+        trigger: 'axis'
+      },
+      xAxis: {
+        type: 'category',
+        data: data.metrics
+      },
+      yAxis: {
+        type: 'value',
+        max: 100
+      },
+      series: [{
+        data: data.values,
+        type: 'bar',
+        itemStyle: {
+          color: function(params) {
+            const value = params.value
+            if (value > 80) return '#F56C6C'
+            if (value > 60) return '#E6A23C'
+            return '#67C23A'
+          }
+        }
+      }]
+    }
+  } catch (error) {
+    console.error('获取系统性能数据失败:', error)
+  }
+}
+
+// 刷新图表数据
+const refreshChartData = async (chartType) => {
+  try {
+    // 清除缓存
+    await axios.post('/api/system/cache/clear')
+    
+    switch (chartType) {
+      case 'reportTrend':
+        await fetchReportTrend()
+        break
+      case 'userActivity':
+        await fetchUserActivity()
+        break
+      case 'reportCategories':
+        await fetchReportCategories()
+        break
+      case 'systemPerformance':
+        await fetchSystemPerformance()
+        break
+    }
+    ElMessage.success('数据已刷新')
+  } catch (error) {
+    console.error('刷新数据失败:', error)
+    ElMessage.error('刷新数据失败')
+  }
+}
+
+// 刷新系统信息
+const refreshSystemInfo = () => {
+  fetchSystemStats()
+  fetchSystemInfo()
+  fetchReportTrend()
+  fetchUserActivity()
+  fetchReportCategories()
+  fetchSystemPerformance()
+  ElMessage.success('系统信息已刷新')
 }
 
 // 查看报表
-const viewReport = (report) => {
-  router.push(`/viewer/${report.id}`)
+const viewReport = (id) => {
+  router.push(`/reports/view/${id}`)
 }
 
 // 编辑报表
-const editReport = (report) => {
-  router.push(`/designer/${report.id}`)
+const editReport = (id) => {
+  router.push(`/reports/design/${id}`)
 }
 
-// 测试连接
-const testConnection = async (datasource) => {
-  try {
-    const response = await axios.post('/api/datasource/test', {
-      dataSource: datasource
-    })
-    
-    if (response.data.success) {
-      ElMessage.success('连接测试成功')
-      // 更新连接状态
-      datasource.connectionStatus = 'success'
-    } else {
-      ElMessage.error('连接测试失败')
-      datasource.connectionStatus = 'error'
-    }
-  } catch (error) {
-    ElMessage.error('连接测试失败')
-    datasource.connectionStatus = 'error'
+// 导出所有报表
+const exportAllReports = () => {
+  ElMessage.info('导出功能开发中...')
+}
+
+// 快速创建报表
+const createQuickReport = (template) => {
+  ElMessage.success(`即将创建一个基于 "${template.name}" 的快速报表。`)
+  // 实际创建报表的逻辑需要调用后端API
+  // 例如：router.push('/designer/new?templateId=' + template.id)
+}
+
+// 格式化日期
+const formatDate = (dateString) => {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  return date.toLocaleDateString('zh-CN')
+}
+
+// 格式化时间
+const formatTime = (dateString) => {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  return date.toLocaleTimeString('zh-CN', { hour: 'numeric', minute: 'numeric' })
+}
+
+// 格式化内存使用
+const formatMemory = (total, free) => {
+  if (!total || !free) return '未知'
+  const used = total - free
+  const usedMB = Math.round(used / 1024 / 1024)
+  const totalMB = Math.round(total / 1024 / 1024)
+  const percentage = Math.round((used / total) * 100)
+  return `${usedMB}MB / ${totalMB}MB (${percentage}%)`
+}
+
+// 添加通知
+const addNotification = (type, icon, title, message) => {
+  const id = Date.now()
+  notifications.value.push({ id, type, icon, title, message, time: new Date() })
+  ElMessage.success(`通知: ${title}`)
+}
+
+// 关闭通知
+const dismissNotification = (id) => {
+  const index = notifications.value.findIndex(n => n.id === id)
+  if (index !== -1) {
+    notifications.value.splice(index, 1)
   }
 }
 
-// 显示模板对话框
-const showTemplateDialog = () => {
-  templateDialogVisible.value = true
+// 清空所有通知
+const clearNotifications = () => {
+  notifications.value = []
+  ElMessage.success('已清空所有通知')
 }
 
-// 应用模板
-const applyTemplate = (template) => {
-  templateDialogVisible.value = false
-  ElMessage.success(`已选择模板: ${template.name}`)
-  // 这里可以跳转到设计器并应用模板
-  router.push('/designer')
+// 标记通知为已读
+const markAsRead = (id) => {
+  const index = notifications.value.findIndex(n => n.id === id)
+  if (index !== -1) {
+    notifications.value[index].read = true
+    ElMessage.success('通知已标记为已读')
+  }
 }
 
-// 显示帮助对话框
-const showHelpDialog = () => {
-  helpDialogVisible.value = true
+// 标记所有通知为已读
+const markAllAsRead = () => {
+  notifications.value.forEach(n => n.read = true)
+  ElMessage.success('所有通知已标记为已读')
 }
 
+// 刷新数据源状态
+const refreshDataSourceStatus = async () => {
+  try {
+    const response = await axios.get('/api/datasource/status')
+    dataSourceStatus.value = response.data
+    ElMessage.success('数据源状态已刷新')
+  } catch (error) {
+    console.error('刷新数据源状态失败:', error)
+    addNotification('error', 'DataAnalysis', '数据源状态刷新失败', '无法连接到数据源或获取状态')
+  }
+}
+
+// 刷新最近活动
+const refreshRecentActivity = async () => {
+  try {
+    const response = await axios.get('/api/system/activity')
+    recentActivity.value = response.data.slice(0, 10) // 只显示最近10条
+    ElMessage.success('最近活动已刷新')
+  } catch (error) {
+    console.error('刷新最近活动失败:', error)
+    addNotification('error', 'User', '最近活动刷新失败', '无法获取最近活动')
+  }
+}
+
+// 启动自动刷新
+const startAutoRefresh = () => {
+  refreshTimer = setInterval(() => {
+    fetchSystemStats()
+    fetchSystemPerformance()
+    refreshDataSourceStatus()
+    refreshRecentActivity()
+  }, 30000) // 每30秒刷新一次
+}
+
+// 停止自动刷新
+const stopAutoRefresh = () => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+}
+
+// 组件挂载时获取数据
 onMounted(() => {
-  loadData()
+  fetchSystemStats()
+  fetchRecentReports()
+  fetchSystemInfo()
+  fetchReportTrend()
+  fetchUserActivity()
+  fetchReportCategories()
+  fetchSystemPerformance()
+  refreshDataSourceStatus()
+  refreshRecentActivity()
+  startAutoRefresh()
+})
+
+// 组件卸载时清理定时器
+onUnmounted(() => {
+  stopAutoRefresh()
 })
 </script>
 
@@ -324,27 +780,52 @@ onMounted(() => {
   padding: 20px;
 }
 
-.stats-row {
-  margin-bottom: 20px;
+.welcome-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.welcome-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.welcome-text h2 {
+  margin: 0 0 10px 0;
+  font-size: 28px;
+}
+
+.welcome-text p {
+  margin: 0;
+  opacity: 0.9;
+}
+
+.welcome-actions {
+  display: flex;
+  gap: 10px;
 }
 
 .stat-card {
-  margin-bottom: 0; /* Remove margin-bottom for grid layout */
+  height: 120px;
+  transition: transform 0.3s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-5px);
 }
 
 .stat-content {
   display: flex;
   align-items: center;
+  height: 100%;
 }
 
 .stat-icon {
-  width: 50px; /* Smaller icon for stats */
-  height: 50px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 12px;
+  margin-right: 15px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(64, 158, 255, 0.1);
 }
 
 .stat-info {
@@ -352,154 +833,455 @@ onMounted(() => {
 }
 
 .stat-value {
-  font-size: 20px; /* Smaller font for stats */
+  font-size: 24px;
   font-weight: bold;
   color: #303133;
-  margin-bottom: 4px;
 }
 
 .stat-title {
-  font-size: 12px; /* Smaller font for stats */
+  font-size: 14px;
   color: #909399;
+  margin-top: 5px;
 }
 
-.content-card {
-  margin-bottom: 20px;
-}
-
-.report-list, .datasource-list {
-  /* No specific styles needed for now, rely on flex layout */
-}
-
-.report-item, .datasource-item {
+.card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid #EBEEF5;
 }
 
-.report-item:last-child, .datasource-item:last-child {
+.chart-container {
+  width: 100%;
+  height: 300px;
+}
+
+.recent-reports {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.report-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.report-item:last-child {
   border-bottom: none;
 }
 
-.report-name, .datasource-name {
+.report-info {
+  flex: 1;
+}
+
+.report-name {
   font-weight: 500;
-  margin-bottom: 4px;
+  margin-bottom: 5px;
 }
 
-.report-desc, .datasource-uri {
-  font-size: 12px;
-  color: #909399;
-  margin-bottom: 4px;
-}
-
-.report-meta, .datasource-status {
+.report-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
-.report-time {
+.report-date {
   font-size: 12px;
-  color: #C0C4CC;
+  color: #909399;
 }
 
-.empty-state {
-  text-align: center;
-  padding: 40px 0;
+.report-actions {
+  display: flex;
+  gap: 5px;
 }
 
-.quick-actions-card {
-  margin-bottom: 0; /* Remove margin-bottom for grid layout */
+.system-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+}
+
+.info-label {
+  font-weight: 500;
+  color: #606266;
 }
 
 .quick-actions {
   display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
 }
 
-.action-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.quick-report-creation {
+  margin-top: 20px;
 }
 
-.action-text {
-  font-size: 14px;
-}
-
-.template-list {
+.quick-report-templates {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 15px;
+  padding: 10px;
 }
 
-.template-card {
+.quick-template-card {
   cursor: pointer;
-  transition: all 0.3s;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 15px;
+  text-align: center;
 }
 
-.template-card:hover {
-  transform: translateY(-2px);
+.quick-template-card:hover {
+  transform: translateY(-5px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-.template-info h4 {
-  margin: 0 0 8px 0;
-  color: #303133;
+.template-icon {
+  margin-bottom: 10px;
+  color: #409EFF;
+  font-size: 40px;
 }
 
-.template-info p {
-  margin: 0 0 12px 0;
-  color: #606266;
+.template-info {
+  flex: 1;
+}
+
+.template-name {
+  font-weight: 600;
+  font-size: 16px;
+  color: #303133;
+  margin-bottom: 5px;
+}
+
+.template-desc {
+  font-size: 13px;
+  color: #909399;
+  line-height: 1.4;
+}
+
+.empty-state, .loading-state {
+  padding: 20px;
+  text-align: center;
+}
+
+/* 通知样式 */
+.notifications {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.notification-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 15px;
+  border-bottom: 1px solid #f0f0f0;
+  background-color: #fdf6ec;
+  transition: background-color 0.3s ease;
+}
+
+.notification-item:hover {
+  background-color: #fef0e6;
+}
+
+.notification-item:last-child {
+  border-bottom: none;
+}
+
+.notification-item.unread {
+  background-color: #fffbe6;
+  border-left: 4px solid #e6a23c; /* 未读通知的特殊样式 */
+}
+
+.notification-icon {
+  margin-right: 12px;
+  padding: 8px;
+  border-radius: 50%;
+  background-color: #fffbe6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notification-icon.success {
+  background-color: #f0f9ff;
+  color: #409eff;
+}
+
+.notification-icon.warning {
+  background-color: #fdf6ec;
+  color: #e6a23c;
+}
+
+.notification-icon.error {
+  background-color: #fef0f0;
+  color: #f56c6c;
+}
+
+.notification-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #303133;
   font-size: 14px;
 }
 
-.template-tags {
+.notification-message {
+  font-size: 13px;
+  color: #606266;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.notification-time {
+  font-size: 12px;
+  color: #909399;
+}
+
+.notification-actions {
   display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: 12px;
 }
 
-.help-content h3 {
+/* 数据源状态样式 */
+.datasource-status {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.datasource-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background-color 0.3s ease;
+}
+
+.datasource-item:hover {
+  background-color: #f5f7fa;
+}
+
+.datasource-item:last-child {
+  border-bottom: none;
+}
+
+.datasource-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.datasource-name {
+  font-weight: 500;
+  margin-bottom: 4px;
   color: #303133;
-  margin-bottom: 12px;
+  font-size: 14px;
 }
 
-.help-content ol, .help-content ul {
-  padding-left: 20px;
-  line-height: 1.6;
+.datasource-url {
+  font-size: 12px;
+  color: #909399;
+  word-break: break-all;
 }
 
-.help-content li {
-  margin-bottom: 8px;
+.datasource-status .el-tag {
+  font-size: 12px;
+  padding: 4px 8px;
 }
 
-/* 移动端响应式样式 */
+/* 最近活动样式 */
+.recent-activity {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 15px;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background-color 0.3s ease;
+}
+
+.activity-item:hover {
+  background-color: #f5f7fa;
+}
+
+.activity-item:last-child {
+  border-bottom: none;
+}
+
+.activity-icon {
+  margin-right: 12px;
+  padding: 6px;
+  border-radius: 50%;
+  background-color: #e1f3d8;
+  color: #67c23a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.activity-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.activity-text {
+  font-size: 14px;
+  color: #303133;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.activity-time {
+  font-size: 12px;
+  color: #909399;
+}
+
+/* 响应式设计 */
 @media (max-width: 768px) {
   .dashboard {
     padding: 10px;
   }
   
-  .stats-row {
-    margin-bottom: 15px;
+  .welcome-content {
+    flex-direction: column;
+    text-align: center;
+    gap: 20px;
   }
   
-  .stat-card {
+  .welcome-text h2 {
+    font-size: 24px;
+  }
+  
+  .welcome-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .welcome-actions .el-button {
+    width: 100%;
     margin-bottom: 10px;
   }
   
-  .stat-content {
+  .quick-actions {
     flex-direction: column;
-    text-align: center;
   }
   
-  .stat-icon {
-    margin-right: 0;
+  .quick-actions .el-button-group {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .quick-actions .el-button {
+    width: 100%;
     margin-bottom: 8px;
-    align-self: center;
+  }
+  
+  .report-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .report-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  
+  .chart-container {
+    height: 250px;
+  }
+  
+  .stat-card {
+    height: 100px;
+    margin-bottom: 10px;
+  }
+  
+  .stat-value {
+    font-size: 20px;
+  }
+  
+  .stat-title {
+    font-size: 12px;
+  }
+  
+  .card-header {
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  
+  .system-info .info-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+
+  .notifications, .datasource-status, .recent-activity {
+    max-height: 250px; /* 调整高度以适应移动端 */
+  }
+
+  .notification-item, .datasource-item, .activity-item {
+    padding: 8px 12px;
+  }
+
+  .notification-icon, .activity-icon {
+    padding: 4px;
+  }
+
+  .notification-title, .activity-text {
+    font-size: 13px;
+  }
+
+  .notification-message, .datasource-url {
+    font-size: 11px;
+  }
+
+  .notification-time, .activity-time {
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .dashboard {
+    padding: 8px;
+  }
+  
+  .welcome-text h2 {
+    font-size: 20px;
+  }
+  
+  .welcome-text p {
+    font-size: 14px;
+  }
+  
+  .chart-container {
+    height: 200px;
+  }
+  
+  .stat-card {
+    height: 90px;
   }
   
   .stat-value {
@@ -510,60 +1292,46 @@ onMounted(() => {
     font-size: 11px;
   }
   
-  .content-card {
-    margin-bottom: 15px;
+  .report-name {
+    font-size: 14px;
   }
   
-  .card-header {
-    flex-direction: column;
-    gap: 8px;
-    align-items: flex-start;
+  .report-date {
+    font-size: 11px;
   }
   
-  .quick-actions {
-    flex-direction: column;
-    gap: 12px;
-  }
-  
-  .action-btn {
-    width: 100%;
-    justify-content: center;
-  }
-  
-  .template-list {
-    grid-template-columns: 1fr;
-  }
-  
-  .template-dialog, .help-dialog {
-    width: 95% !important;
+  .info-label {
+    font-size: 13px;
   }
 }
 
-@media (max-width: 480px) {
-  .stat-icon {
-    width: 40px;
-    height: 40px;
+/* 触摸优化 */
+@media (hover: none) and (pointer: coarse) {
+  .stat-card:hover {
+    transform: none;
   }
   
-  .stat-value {
-    font-size: 16px;
+  .stat-card:active {
+    transform: scale(0.98);
   }
   
-  .report-item, .datasource-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
+  .el-button:active {
+    transform: scale(0.98);
   }
   
-  .report-actions, .datasource-actions {
-    width: 100%;
-    display: flex;
-    gap: 8px;
+  .report-item:active {
+    background-color: #f5f7fa;
+  }
+}
+
+/* 移动端图表优化 */
+@media (max-width: 768px) {
+  .chart-container {
+    touch-action: pan-x pan-y;
   }
   
-  .report-actions .el-button,
-  .datasource-actions .el-button {
-    flex: 1;
+  .chart-container .echarts {
+    touch-action: pan-x pan-y;
   }
 }
 </style> 

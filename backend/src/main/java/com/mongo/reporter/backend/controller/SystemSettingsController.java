@@ -1,9 +1,10 @@
 package com.mongo.reporter.backend.controller;
 
+import com.mongo.reporter.backend.service.SystemSettingsService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
 import java.util.Map;
 
 @RestController
@@ -11,117 +12,66 @@ import java.util.Map;
 @CrossOrigin(origins = "*")
 public class SystemSettingsController {
 
-    // 模拟系统设置存储
-    private static final Map<String, Object> systemSettings = new HashMap<>();
-
-    static {
-        // 基本设置
-        systemSettings.put("appName", "MongoReporter");
-        systemSettings.put("appVersion", "1.0.0");
-        systemSettings.put("language", "zh-CN");
-        systemSettings.put("timezone", "Asia/Shanghai");
-        
-        // 主题设置
-        systemSettings.put("theme", "light");
-        systemSettings.put("primaryColor", "#409EFF");
-        systemSettings.put("chartTheme", "light");
-        
-        // 通知设置
-        systemSettings.put("emailNotifications", true);
-        systemSettings.put("systemNotifications", true);
-        systemSettings.put("notificationSound", true);
-        
-        // 安全设置
-        systemSettings.put("sessionTimeout", 30);
-        systemSettings.put("maxLoginAttempts", 5);
-        systemSettings.put("passwordMinLength", 8);
-        systemSettings.put("requireSpecialChars", true);
-        
-        // 性能设置
-        systemSettings.put("dataCacheEnabled", true);
-        systemSettings.put("cacheTimeout", 300);
-        systemSettings.put("maxConcurrentUsers", 100);
-        systemSettings.put("queryTimeout", 30);
-        
-        // 备份设置
-        systemSettings.put("autoBackupEnabled", true);
-        systemSettings.put("backupFrequency", "daily");
-        systemSettings.put("backupRetention", 30);
-        systemSettings.put("backupLocation", "/backups");
-    }
+    @Autowired
+    private SystemSettingsService systemSettingsService;
 
     // 获取所有系统设置
     @GetMapping
     public ResponseEntity<Map<String, Object>> getAllSettings() {
-        return ResponseEntity.ok(systemSettings);
+        Map<String, Object> settings = systemSettingsService.getAllSettings();
+        return ResponseEntity.ok(settings);
     }
 
-    // 获取特定设置
-    @GetMapping("/{key}")
-    public ResponseEntity<Object> getSetting(@PathVariable String key) {
-        if (systemSettings.containsKey(key)) {
-            return ResponseEntity.ok(systemSettings.get(key));
-        }
-        return ResponseEntity.notFound().build();
+    // 获取特定分类的设置
+    @GetMapping("/{category}")
+    public ResponseEntity<Map<String, Object>> getSettingsByCategory(@PathVariable String category) {
+        Map<String, Object> settings = systemSettingsService.getSettingsByCategory(category);
+        return ResponseEntity.ok(settings);
     }
 
-    // 更新设置
+    // 更新所有设置
     @PostMapping
-    public ResponseEntity<Map<String, Object>> updateSettings(@RequestBody Map<String, Object> settings) {
-        systemSettings.putAll(settings);
-        return ResponseEntity.ok(systemSettings);
+    public ResponseEntity<Map<String, Object>> updateAllSettings(@RequestBody Map<String, Object> settings) {
+        systemSettingsService.saveAllSettings(settings);
+        Map<String, Object> updatedSettings = systemSettingsService.getAllSettings();
+        return ResponseEntity.ok(updatedSettings);
     }
 
-    // 更新特定设置
-    @PutMapping("/{key}")
-    public ResponseEntity<Object> updateSetting(@PathVariable String key, @RequestBody Object value) {
-        systemSettings.put(key, value);
-        return ResponseEntity.ok(value);
+    // 更新特定分类的设置
+    @PutMapping("/{category}")
+    public ResponseEntity<Map<String, Object>> updateSettingsByCategory(
+            @PathVariable String category, 
+            @RequestBody Map<String, Object> settings) {
+        systemSettingsService.saveSettings(category, settings);
+        Map<String, Object> updatedSettings = systemSettingsService.getSettingsByCategory(category);
+        return ResponseEntity.ok(updatedSettings);
     }
 
     // 重置设置到默认值
     @PostMapping("/reset")
     public ResponseEntity<Map<String, Object>> resetSettings() {
-        systemSettings.clear();
-        // 重新初始化默认设置
-        systemSettings.put("appName", "MongoReporter");
-        systemSettings.put("appVersion", "1.0.0");
-        systemSettings.put("language", "zh-CN");
-        systemSettings.put("timezone", "Asia/Shanghai");
-        systemSettings.put("theme", "light");
-        systemSettings.put("primaryColor", "#409EFF");
-        systemSettings.put("chartTheme", "light");
-        systemSettings.put("emailNotifications", true);
-        systemSettings.put("systemNotifications", true);
-        systemSettings.put("notificationSound", true);
-        systemSettings.put("sessionTimeout", 30);
-        systemSettings.put("maxLoginAttempts", 5);
-        systemSettings.put("passwordMinLength", 8);
-        systemSettings.put("requireSpecialChars", true);
-        systemSettings.put("dataCacheEnabled", true);
-        systemSettings.put("cacheTimeout", 300);
-        systemSettings.put("maxConcurrentUsers", 100);
-        systemSettings.put("queryTimeout", 30);
-        systemSettings.put("autoBackupEnabled", true);
-        systemSettings.put("backupFrequency", "daily");
-        systemSettings.put("backupRetention", 30);
-        systemSettings.put("backupLocation", "/backups");
-        
-        return ResponseEntity.ok(systemSettings);
+        systemSettingsService.resetSettings();
+        Map<String, Object> defaultSettings = systemSettingsService.getAllSettings();
+        return ResponseEntity.ok(defaultSettings);
     }
 
     // 获取系统信息
     @GetMapping("/system/info")
     public ResponseEntity<Map<String, Object>> getSystemInfo() {
-        Map<String, Object> systemInfo = new HashMap<>();
-        systemInfo.put("javaVersion", System.getProperty("java.version"));
-        systemInfo.put("osName", System.getProperty("os.name"));
-        systemInfo.put("osVersion", System.getProperty("os.version"));
-        systemInfo.put("totalMemory", Runtime.getRuntime().totalMemory());
-        systemInfo.put("freeMemory", Runtime.getRuntime().freeMemory());
-        systemInfo.put("maxMemory", Runtime.getRuntime().maxMemory());
-        systemInfo.put("availableProcessors", Runtime.getRuntime().availableProcessors());
-        
+        Map<String, Object> systemInfo = Map.ofEntries(
+            Map.entry("appName", "MongoReporter"),
+            Map.entry("version", "1.4.2"),
+            Map.entry("javaVersion", System.getProperty("java.version")),
+            Map.entry("osName", System.getProperty("os.name")),
+            Map.entry("osVersion", System.getProperty("os.version")),
+            Map.entry("userHome", System.getProperty("user.home")),
+            Map.entry("userDir", System.getProperty("user.dir")),
+            Map.entry("javaHome", System.getProperty("java.home")),
+            Map.entry("totalMemory", Runtime.getRuntime().totalMemory()),
+            Map.entry("freeMemory", Runtime.getRuntime().freeMemory()),
+            Map.entry("maxMemory", Runtime.getRuntime().maxMemory()),
+            Map.entry("availableProcessors", Runtime.getRuntime().availableProcessors())
+        );
         return ResponseEntity.ok(systemInfo);
     }
 } 

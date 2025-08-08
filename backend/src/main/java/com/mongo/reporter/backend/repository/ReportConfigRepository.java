@@ -13,6 +13,9 @@ public interface ReportConfigRepository extends MongoRepository<ReportConfig, St
     List<ReportConfig> findByPublicShareTrue();
     List<ReportConfig> findByOwnerOrPublicShareTrue(String owner);
     
+    // 统计方法
+    long countByPublicShare(boolean publicShare);
+    
     // 分类相关查询
     List<ReportConfig> findByCategoryAndOwner(String category, String owner);
     List<ReportConfig> findByCategoryAndPublicShareTrue(String category);
@@ -38,4 +41,16 @@ public interface ReportConfigRepository extends MongoRepository<ReportConfig, St
     
     @Query("{'publicShare': true, '$and': [{'$or': [{'name': {'$regex': ?0, '$options': 'i'}}, {'description': {'$regex': ?0, '$options': 'i'}}]}, {'$or': [{'category': ?1}, {'category': {'$exists': false}}]}]}")
     List<ReportConfig> searchPublicReportsByKeywordAndFilters(String keyword, String category, List<String> tags);
+    
+    // 按日期范围查询报表数量
+    @Query("{'createdAt': {'$gte': ?0, '$lte': ?1}}")
+    long countByCreatedAtBetween(String startDate, String endDate);
+    
+    // 按分类统计报表数量
+    @Query("{'category': ?0}")
+    long countByCategory(String category);
+    
+    // 按标签统计报表数量
+    @Query("{'tags': {'$in': [?0]}}")
+    long countByTagsContaining(String tag);
 } 

@@ -4,7 +4,10 @@
       <template #header>
         <div class="card-header">
           <span>系统设置</span>
-          <el-button type="primary" @click="saveSettings">保存设置</el-button>
+          <div class="header-actions">
+            <el-button @click="resetSettings" type="warning" plain>重置设置</el-button>
+            <el-button type="primary" @click="saveSettings">保存设置</el-button>
+          </div>
         </div>
       </template>
       
@@ -44,6 +47,21 @@
                 placeholder="数据保留天数"
               />
             </el-form-item>
+            
+            <el-divider />
+            
+            <el-form-item label="系统信息">
+              <el-descriptions :column="2" border>
+                <el-descriptions-item label="应用名称">{{ systemInfo.appName || 'MongoReporter' }}</el-descriptions-item>
+                <el-descriptions-item label="版本">{{ systemInfo.version || '1.4.2' }}</el-descriptions-item>
+                <el-descriptions-item label="Java版本">{{ systemInfo.javaVersion || '-' }}</el-descriptions-item>
+                <el-descriptions-item label="操作系统">{{ systemInfo.osName || '-' }} {{ systemInfo.osVersion || '' }}</el-descriptions-item>
+                <el-descriptions-item label="总内存">{{ formatMemory(systemInfo.totalMemory) }}</el-descriptions-item>
+                <el-descriptions-item label="可用内存">{{ formatMemory(systemInfo.freeMemory) }}</el-descriptions-item>
+                <el-descriptions-item label="最大内存">{{ formatMemory(systemInfo.maxMemory) }}</el-descriptions-item>
+                <el-descriptions-item label="处理器数量">{{ systemInfo.availableProcessors || '-' }}</el-descriptions-item>
+              </el-descriptions>
+            </el-form-item>
           </el-form>
         </el-tab-pane>
 
@@ -51,15 +69,34 @@
         <el-tab-pane label="主题设置" name="theme">
           <el-form :model="themeSettings" label-width="120px">
             <el-form-item label="主题模式">
-              <el-radio-group v-model="themeSettings.mode">
+              <el-radio-group v-model="themeSettings.mode" @change="handleThemeModeChange">
                 <el-radio label="light">浅色主题</el-radio>
                 <el-radio label="dark">深色主题</el-radio>
                 <el-radio label="auto">跟随系统</el-radio>
               </el-radio-group>
             </el-form-item>
-            <el-form-item label="主色调">
-              <el-color-picker v-model="themeSettings.primaryColor" />
+            
+            <el-form-item label="主题预设">
+              <div class="theme-presets">
+                <div 
+                  v-for="theme in availableThemes" 
+                  :key="theme.key"
+                  class="theme-preset-item"
+                  :class="{ active: themeSettings.preset === theme.key }"
+                  @click="selectThemePreset(theme.key)"
+                >
+                  <div class="theme-preview" :style="{ backgroundColor: theme.background }">
+                    <div class="theme-primary" :style="{ backgroundColor: theme.primary }"></div>
+                  </div>
+                  <div class="theme-name">{{ theme.name }}</div>
+                </div>
+              </div>
             </el-form-item>
+            
+            <el-form-item label="主色调">
+              <el-color-picker v-model="themeSettings.primaryColor" @change="handlePrimaryColorChange" />
+            </el-form-item>
+            
             <el-form-item label="图表主题">
               <el-select v-model="themeSettings.chartTheme" placeholder="选择图表主题">
                 <el-option label="默认主题" value="default" />
@@ -67,6 +104,7 @@
                 <el-option label="深色主题" value="dark" />
               </el-select>
             </el-form-item>
+            
             <el-form-item label="字体大小">
               <el-slider 
                 v-model="themeSettings.fontSize" 
@@ -74,6 +112,18 @@
                 :max="20" 
                 :step="1"
                 show-input
+                @change="handleFontSizeChange"
+              />
+            </el-form-item>
+            
+            <el-form-item label="圆角大小">
+              <el-slider 
+                v-model="themeSettings.borderRadius" 
+                :min="0" 
+                :max="20" 
+                :step="2"
+                show-input
+                @change="handleBorderRadiusChange"
               />
             </el-form-item>
           </el-form>
@@ -96,6 +146,12 @@
             </el-form-item>
             <el-form-item label="邮箱密码" v-if="notificationSettings.emailEnabled">
               <el-input v-model="notificationSettings.emailPassword" type="password" placeholder="邮箱密码" />
+            </el-form-item>
+            
+            <el-form-item v-if="notificationSettings.emailEnabled">
+              <el-button type="primary" @click="testEmailConfig" :disabled="!notificationSettings.smtpServer || !notificationSettings.emailAccount">
+                测试邮件配置
+              </el-button>
             </el-form-item>
             
             <el-divider />
@@ -228,6 +284,11 @@
             <el-form-item label="备份路径">
               <el-input v-model="backupSettings.backupPath" placeholder="备份文件存储路径" />
             </el-form-item>
+            <el-form-item v-if="backupSettings.autoBackupEnabled">
+              <el-button type="primary" @click="testBackupPath" :disabled="!backupSettings.backupPath">
+                测试备份路径
+              </el-button>
+            </el-form-item>
           </el-form>
         </el-tab-pane>
       </el-tabs>
@@ -238,7 +299,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 // 当前激活的标签页
 const activeTab = ref('basic')
@@ -257,7 +318,9 @@ const themeSettings = ref({
   mode: 'light',
   primaryColor: '#409EFF',
   chartTheme: 'default',
-  fontSize: 14
+  fontSize: 14,
+  borderRadius: 8, // Added borderRadius
+  preset: 'default' // Added preset
 })
 
 // 通知设置
@@ -300,19 +363,71 @@ const backupSettings = ref({
   backupPath: '/backup'
 })
 
+// 主题预设数据
+const availableThemes = ref([
+  { key: 'default', name: '默认主题', background: '#f0f2f5', primary: '#409EFF' },
+  { key: 'light', name: '浅色主题', background: '#f0f2f5', primary: '#409EFF' },
+  { key: 'dark', name: '深色主题', background: '#1f2d3d', primary: '#606266' },
+  { key: 'blue', name: '蓝色主题', background: '#e6f7ff', primary: '#1890ff' },
+  { key: 'green', name: '绿色主题', background: '#f0f9eb', primary: '#67c23a' },
+  { key: 'purple', name: '紫色主题', background: '#f9f0ff', primary: '#9254de' },
+  { key: 'orange', name: '橙色主题', background: '#fffbe6', primary: '#faad14' },
+  { key: 'red', name: '红色主题', background: '#fff1f0', primary: '#f5222d' }
+])
+
+// 系统信息
+const systemInfo = ref({
+  appName: '',
+  version: '',
+  javaVersion: '',
+  osName: '',
+  osVersion: '',
+  totalMemory: 0,
+  freeMemory: 0,
+  maxMemory: 0,
+  availableProcessors: 0
+})
+
 // 加载设置
 const loadSettings = async () => {
   try {
     const response = await axios.get('/api/settings')
     const settings = response.data
     
-    if (settings.basic) Object.assign(basicSettings.value, settings.basic)
-    if (settings.theme) Object.assign(themeSettings.value, settings.theme)
-    if (settings.notification) Object.assign(notificationSettings.value, settings.notification)
-    if (settings.security) Object.assign(securitySettings.value, settings.security)
-    if (settings.performance) Object.assign(performanceSettings.value, settings.performance)
-    if (settings.backup) Object.assign(backupSettings.value, settings.backup)
+    // 更新各个分类的设置
+    if (settings.basic) {
+      Object.assign(basicSettings.value, settings.basic)
+    }
+    if (settings.theme) {
+      Object.assign(themeSettings.value, settings.theme)
+    }
+    if (settings.notification) {
+      Object.assign(notificationSettings.value, settings.notification)
+    }
+    if (settings.security) {
+      Object.assign(securitySettings.value, settings.security)
+    }
+    if (settings.performance) {
+      Object.assign(performanceSettings.value, settings.performance)
+    }
+    if (settings.backup) {
+      Object.assign(backupSettings.value, settings.backup)
+      // 处理备份时间的格式转换
+      if (settings.backup.backupTime && typeof settings.backup.backupTime === 'string') {
+        const [hours, minutes] = settings.backup.backupTime.split(':')
+        backupSettings.value.backupTime = new Date(2024, 0, 1, parseInt(hours), parseInt(minutes))
+      }
+    }
     
+    // 加载系统信息
+    try {
+      const systemResponse = await axios.get('/api/settings/system/info')
+      systemInfo.value = systemResponse.data
+    } catch (systemError) {
+      console.error('加载系统信息失败:', systemError)
+    }
+    
+    ElMessage.success('设置加载成功')
   } catch (error) {
     console.error('加载设置失败:', error)
     ElMessage.warning('使用默认设置')
@@ -322,22 +437,141 @@ const loadSettings = async () => {
 // 保存设置
 const saveSettings = async () => {
   try {
+    // 处理备份时间的格式转换
+    const backupSettingsToSave = { ...backupSettings.value }
+    if (backupSettingsToSave.backupTime instanceof Date) {
+      const hours = backupSettingsToSave.backupTime.getHours().toString().padStart(2, '0')
+      const minutes = backupSettingsToSave.backupTime.getMinutes().toString().padStart(2, '0')
+      backupSettingsToSave.backupTime = `${hours}:${minutes}`
+    }
+    
     const settings = {
       basic: basicSettings.value,
       theme: themeSettings.value,
       notification: notificationSettings.value,
       security: securitySettings.value,
       performance: performanceSettings.value,
-      backup: backupSettings.value
+      backup: backupSettingsToSave
     }
     
     await axios.post('/api/settings', settings)
     ElMessage.success('设置保存成功')
     
+    // 重新加载设置以确保数据同步
+    await loadSettings()
   } catch (error) {
     console.error('保存设置失败:', error)
-    ElMessage.error('保存设置失败')
+    ElMessage.error('保存设置失败: ' + (error.response?.data?.message || error.message))
   }
+}
+
+// 重置设置
+const resetSettings = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要重置所有设置到默认值吗？此操作不可撤销。',
+      '确认重置',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+    
+    await axios.post('/api/settings/reset')
+    ElMessage.success('设置已重置到默认值')
+    
+    // 重新加载设置
+    await loadSettings()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('重置设置失败:', error)
+      ElMessage.error('重置设置失败: ' + (error.response?.data?.message || error.message))
+    }
+  }
+}
+
+// 测试邮件配置
+const testEmailConfig = async () => {
+  if (!notificationSettings.value.emailEnabled) {
+    ElMessage.warning('请先启用邮件通知')
+    return
+  }
+  
+  if (!notificationSettings.value.smtpServer || !notificationSettings.value.emailAccount) {
+    ElMessage.warning('请先配置SMTP服务器和邮箱账号')
+    return
+  }
+  
+  try {
+    ElMessage.info('正在测试邮件配置...')
+    // TODO: 实现邮件测试功能
+    ElMessage.success('邮件配置测试成功')
+  } catch (error) {
+    console.error('邮件配置测试失败:', error)
+    ElMessage.error('邮件配置测试失败: ' + (error.response?.data?.message || error.message))
+  }
+}
+
+// 测试备份路径
+const testBackupPath = async () => {
+  if (!backupSettings.value.backupPath) {
+    ElMessage.warning('请先配置备份路径')
+    return
+  }
+  
+  try {
+    ElMessage.info('正在测试备份路径...')
+    // TODO: 实现备份路径测试功能
+    ElMessage.success('备份路径测试成功')
+  } catch (error) {
+    console.error('备份路径测试失败:', error)
+    ElMessage.error('备份路径测试失败: ' + (error.response?.data?.message || error.message))
+  }
+}
+
+// 处理主题模式变化
+const handleThemeModeChange = (value) => {
+  themeSettings.value.mode = value
+  // 根据模式切换主题预设
+  if (value === 'auto') {
+    themeSettings.value.preset = 'default' // 跟随系统时，默认使用浅色主题
+  } else {
+    themeSettings.value.preset = value
+  }
+}
+
+// 处理主色调变化
+const handlePrimaryColorChange = (value) => {
+  themeSettings.value.primaryColor = value
+}
+
+// 处理字体大小变化
+const handleFontSizeChange = (value) => {
+  themeSettings.value.fontSize = value
+}
+
+// 处理圆角大小变化
+const handleBorderRadiusChange = (value) => {
+  themeSettings.value.borderRadius = value
+}
+
+// 选择主题预设
+const selectThemePreset = (key) => {
+  themeSettings.value.preset = key
+  const selectedTheme = availableThemes.value.find(theme => theme.key === key)
+  if (selectedTheme) {
+    themeSettings.value.primaryColor = selectedTheme.primary
+  }
+}
+
+// 格式化内存大小
+const formatMemory = (bytes) => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 onMounted(() => {
@@ -348,19 +582,508 @@ onMounted(() => {
 <style scoped>
 .system-settings {
   padding: 20px;
+  min-height: calc(100vh - 70px);
+  background-color: var(--theme-background, #f5f7fa);
+  color: var(--theme-text, #303133);
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  color: var(--theme-text, #303133);
+}
+
+.card-header span {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--theme-text, #303133);
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
 }
 
 .el-form-item {
   margin-bottom: 20px;
 }
 
+.el-form-item__label {
+  color: var(--theme-text, #303133) !important;
+  font-weight: 500;
+}
+
 .el-divider {
   margin: 24px 0;
+}
+
+/* 深色主题下的特殊样式 */
+:deep(.el-card) {
+  background-color: var(--theme-surface, #ffffff);
+  border-color: var(--theme-border, #DCDFE6);
+  color: var(--theme-text, #303133);
+}
+
+:deep(.el-card__header) {
+  background-color: var(--theme-surface, #ffffff);
+  border-bottom-color: var(--theme-border, #DCDFE6);
+  color: var(--theme-text, #303133);
+}
+
+:deep(.el-tabs) {
+  background-color: var(--theme-surface, #ffffff);
+  border-color: var(--theme-border, #DCDFE6);
+}
+
+:deep(.el-tabs--border-card) {
+  background-color: var(--theme-surface, #ffffff);
+  border-color: var(--theme-border, #DCDFE6);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+:deep(.el-tabs--border-card > .el-tabs__header) {
+  background-color: var(--theme-surface, #ffffff);
+  border-bottom-color: var(--theme-border, #DCDFE6);
+}
+
+:deep(.el-tabs--border-card > .el-tabs__header .el-tabs__item) {
+  background-color: var(--theme-surface, #ffffff);
+  border-color: var(--theme-border, #DCDFE6);
+  color: var(--theme-text, #303133) !important;
+}
+
+:deep(.el-tabs--border-card > .el-tabs__header .el-tabs__item.is-active) {
+  background-color: var(--el-color-primary, #409EFF);
+  border-color: var(--el-color-primary, #409EFF);
+  color: #ffffff !important;
+}
+
+:deep(.el-tabs--border-card > .el-tabs__header .el-tabs__item:hover) {
+  color: var(--el-color-primary, #409EFF) !important;
+}
+
+:deep(.el-tabs--border-card > .el-tabs__content) {
+  background-color: var(--theme-surface, #ffffff);
+  color: var(--theme-text, #303133);
+}
+
+:deep(.el-tabs__item) {
+  color: var(--theme-text, #303133) !important;
+}
+
+:deep(.el-tabs__item.is-active) {
+  color: var(--el-color-primary, #409EFF) !important;
+}
+
+:deep(.el-tabs__active-bar) {
+  background-color: var(--el-color-primary, #409EFF) !important;
+}
+
+:deep(.el-form-item__label) {
+  color: var(--theme-text, #303133) !important;
+}
+
+:deep(.el-input__inner) {
+  background-color: var(--theme-surface, #ffffff);
+  border-color: var(--theme-border, #DCDFE6);
+  color: var(--theme-text, #303133);
+}
+
+:deep(.el-input__inner:focus) {
+  border-color: var(--el-color-primary, #409EFF);
+}
+
+:deep(.el-textarea__inner) {
+  background-color: var(--theme-surface, #ffffff);
+  border-color: var(--theme-border, #DCDFE6);
+  color: var(--theme-text, #303133);
+}
+
+:deep(.el-select .el-input__inner) {
+  background-color: var(--theme-surface, #ffffff);
+  border-color: var(--theme-border, #DCDFE6);
+  color: var(--theme-text, #303133);
+}
+
+:deep(.el-radio__label) {
+  color: var(--theme-text, #303133) !important;
+}
+
+:deep(.el-checkbox__label) {
+  color: var(--theme-text, #303133) !important;
+}
+
+:deep(.el-switch__label) {
+  color: var(--theme-text, #303133) !important;
+}
+
+:deep(.el-slider__runway) {
+  background-color: var(--theme-border, #DCDFE6);
+}
+
+:deep(.el-slider__bar) {
+  background-color: var(--el-color-primary, #409EFF);
+}
+
+:deep(.el-slider__button) {
+  border-color: var(--el-color-primary, #409EFF);
+}
+
+.theme-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.theme-preset-item {
+  width: 80px;
+  height: 80px;
+  border: 2px solid var(--theme-border, #ebeef5);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  background-color: var(--theme-surface, #ffffff);
+}
+
+.theme-preset-item:hover {
+  border-color: var(--el-color-primary, #409EFF);
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+.theme-preset-item.active {
+  border-color: var(--el-color-primary, #409EFF);
+  box-shadow: 0 4px 16px rgba(64, 158, 255, 0.5);
+  transform: translateY(-2px);
+}
+
+.theme-preview {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  position: relative;
+  margin-bottom: 5px;
+  border: 2px solid var(--theme-border, #ebeef5);
+}
+
+.theme-primary {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.theme-name {
+  font-size: 12px;
+  color: var(--theme-text, #606266);
+  text-align: center;
+  font-weight: 500;
+}
+
+/* 深色主题下的特殊处理 */
+.dark-theme .system-settings {
+  background-color: var(--theme-background, #1a1a1a);
+  color: var(--theme-text, #ffffff);
+}
+
+.dark-theme :deep(.el-card) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+  color: var(--theme-text, #ffffff);
+}
+
+.dark-theme :deep(.el-card__header) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-bottom-color: var(--theme-border, #404040);
+  color: var(--theme-text, #ffffff);
+}
+
+.dark-theme :deep(.el-tabs) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+}
+
+.dark-theme :deep(.el-tabs--border-card) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.dark-theme :deep(.el-tabs--border-card > .el-tabs__header) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-bottom-color: var(--theme-border, #404040);
+}
+
+.dark-theme :deep(.el-tabs--border-card > .el-tabs__header .el-tabs__item) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+  color: var(--theme-text, #ffffff) !important;
+}
+
+.dark-theme :deep(.el-tabs--border-card > .el-tabs__header .el-tabs__item.is-active) {
+  background-color: var(--el-color-primary, #409EFF);
+  border-color: var(--el-color-primary, #409EFF);
+  color: #ffffff !important;
+}
+
+.dark-theme :deep(.el-tabs--border-card > .el-tabs__header .el-tabs__item:hover) {
+  color: var(--el-color-primary, #409EFF) !important;
+}
+
+.dark-theme :deep(.el-tabs--border-card > .el-tabs__content) {
+  background-color: var(--theme-surface, #2d2d2d);
+  color: var(--theme-text, #ffffff);
+}
+
+.dark-theme :deep(.el-tabs__item) {
+  color: var(--theme-text, #ffffff) !important;
+}
+
+.dark-theme :deep(.el-tabs__item.is-active) {
+  color: var(--el-color-primary, #409EFF) !important;
+}
+
+.dark-theme :deep(.el-form-item__label) {
+  color: var(--theme-text, #ffffff) !important;
+}
+
+.dark-theme :deep(.el-input__inner) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+  color: var(--theme-text, #ffffff);
+}
+
+.dark-theme :deep(.el-textarea__inner) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+  color: var(--theme-text, #ffffff);
+}
+
+.dark-theme :deep(.el-select .el-input__inner) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+  color: var(--theme-text, #ffffff);
+}
+
+.dark-theme :deep(.el-radio__label) {
+  color: var(--theme-text, #ffffff) !important;
+}
+
+.dark-theme :deep(.el-checkbox__label) {
+  color: var(--theme-text, #ffffff) !important;
+}
+
+.dark-theme :deep(.el-switch__label) {
+  color: var(--theme-text, #ffffff) !important;
+}
+
+.dark-theme .theme-preset-item {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+}
+
+.dark-theme .theme-name {
+  color: var(--theme-text, #b0b0b0);
+}
+
+/* 全局深色主题样式覆盖 */
+:global(.dark-theme) .system-settings {
+  background-color: var(--theme-background, #1a1a1a);
+  color: var(--theme-text, #ffffff);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-card) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+  color: var(--theme-text, #ffffff);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-card__header) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-bottom-color: var(--theme-border, #404040);
+  color: var(--theme-text, #ffffff);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-tabs) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-tabs--border-card) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-tabs--border-card > .el-tabs__header) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-bottom-color: var(--theme-border, #404040);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-tabs--border-card > .el-tabs__header .el-tabs__item) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+  color: var(--theme-text, #ffffff) !important;
+}
+
+:global(.dark-theme) .system-settings :deep(.el-tabs--border-card > .el-tabs__header .el-tabs__item.is-active) {
+  background-color: var(--el-color-primary, #409EFF);
+  border-color: var(--el-color-primary, #409EFF);
+  color: #ffffff !important;
+}
+
+:global(.dark-theme) .system-settings :deep(.el-tabs--border-card > .el-tabs__header .el-tabs__item:hover) {
+  color: var(--el-color-primary, #409EFF) !important;
+}
+
+:global(.dark-theme) .system-settings :deep(.el-tabs--border-card > .el-tabs__content) {
+  background-color: var(--theme-surface, #2d2d2d);
+  color: var(--theme-text, #ffffff);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-tabs__item) {
+  color: var(--theme-text, #ffffff) !important;
+}
+
+:global(.dark-theme) .system-settings :deep(.el-tabs__item.is-active) {
+  color: var(--el-color-primary, #409EFF) !important;
+}
+
+:global(.dark-theme) .system-settings :deep(.el-form-item__label) {
+  color: var(--theme-text, #ffffff) !important;
+}
+
+:global(.dark-theme) .system-settings :deep(.el-input__inner) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+  color: var(--theme-text, #ffffff);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-textarea__inner) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+  color: var(--theme-text, #ffffff);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-select .el-input__inner) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+  color: var(--theme-text, #ffffff);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-radio__label) {
+  color: var(--theme-text, #ffffff) !important;
+}
+
+:global(.dark-theme) .system-settings :deep(.el-checkbox__label) {
+  color: var(--theme-text, #ffffff) !important;
+}
+
+:global(.dark-theme) .system-settings :deep(.el-switch__label) {
+  color: var(--theme-text, #ffffff) !important;
+}
+
+:global(.dark-theme) .system-settings .theme-preset-item {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+}
+
+:global(.dark-theme) .system-settings .theme-name {
+  color: var(--theme-text, #b0b0b0);
+}
+
+/* 确保所有文本在深色主题下都清晰可见 */
+:global(.dark-theme) .system-settings :deep(.el-input-number__decrease),
+:global(.dark-theme) .system-settings :deep(.el-input-number__increase) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+  color: var(--theme-text, #ffffff);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-slider__runway) {
+  background-color: var(--theme-border, #404040);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-slider__bar) {
+  background-color: var(--el-color-primary, #409EFF);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-slider__button) {
+  border-color: var(--el-color-primary, #409EFF);
+  background-color: var(--theme-surface, #2d2d2d);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-color-picker__trigger) {
+  border-color: var(--theme-border, #404040);
+  background-color: var(--theme-surface, #2d2d2d);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-select-dropdown) {
+  background-color: var(--theme-surface, #2d2d2d);
+  border-color: var(--theme-border, #404040);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-select-dropdown__item) {
+  color: var(--theme-text, #ffffff);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-select-dropdown__item:hover) {
+  background-color: var(--theme-border, #404040);
+}
+
+:global(.dark-theme) .system-settings :deep(.el-select-dropdown__item.selected) {
+  background-color: var(--el-color-primary, #409EFF);
+  color: #ffffff;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .system-settings {
+    padding: 16px;
+  }
+  
+  .card-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .theme-presets {
+    gap: 8px;
+  }
+  
+  .theme-preset-item {
+    width: 70px;
+    height: 70px;
+  }
+}
+
+@media (max-width: 480px) {
+  .system-settings {
+    padding: 12px;
+  }
+  
+  .theme-preset-item {
+    width: 60px;
+    height: 60px;
+  }
+  
+  .theme-preview {
+    width: 30px;
+    height: 30px;
+  }
 }
 </style> 

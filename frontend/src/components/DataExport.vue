@@ -162,6 +162,7 @@
 import { ref, reactive, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Document, Grid, Picture, DataLine } from '@element-plus/icons-vue'
+import * as XLSX from 'xlsx'
 
 const props = defineProps({
   visible: {
@@ -314,6 +315,57 @@ const downloadFile = (blob, filename) => {
   link.click()
   document.body.removeChild(link)
   window.URL.revokeObjectURL(url)
+}
+
+// 导出数据
+const exportData = async (format) => {
+  if (!data.value || data.value.length === 0) {
+    ElMessage.warning('没有数据可导出')
+    return
+  }
+
+  try {
+    loading.value = true
+    
+    switch (format) {
+      case 'excel':
+        await exportToExcel()
+        break
+      case 'csv':
+        await exportToCSV()
+        break
+      case 'json':
+        await exportToJSON()
+        break
+      default:
+        ElMessage.error('不支持的导出格式')
+    }
+  } catch (error) {
+    console.error('导出失败:', error)
+    ElMessage.error('导出失败: ' + error.message)
+  } finally {
+    loading.value = false
+  }
+}
+
+// 导出到Excel
+const exportToExcel = async () => {
+  const worksheet = XLSX.utils.json_to_sheet(data.value)
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, '数据')
+  
+  // 优化：使用流式写入
+  const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `数据导出_${new Date().toISOString().slice(0, 10)}.xlsx`
+  link.click()
+  window.URL.revokeObjectURL(url)
+  
+  ElMessage.success('Excel文件导出成功')
 }
 </script>
 

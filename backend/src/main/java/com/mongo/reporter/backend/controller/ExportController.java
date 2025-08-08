@@ -11,9 +11,13 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @RestController
 @RequestMapping("/api/export")
@@ -125,6 +129,70 @@ public class ExportController {
     }
 
     /**
+     * 批量导出报表
+     */
+    @PostMapping("/batch")
+    public ResponseEntity<byte[]> batchExport(@RequestBody Map<String, Object> batchExportRequest) {
+        try {
+            @SuppressWarnings("unchecked")
+            List<String> reportIds = (List<String>) batchExportRequest.get("reportIds");
+            String format = (String) batchExportRequest.getOrDefault("format", "excel");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> options = (Map<String, Object>) batchExportRequest.getOrDefault("options", new HashMap<>());
+            
+            if (reportIds == null || reportIds.isEmpty()) {
+                return ResponseEntity.badRequest().build();
+            }
+            
+            // 获取所有报表
+            List<ReportConfig> reports = new ArrayList<>();
+            for (String reportId : reportIds) {
+                Optional<ReportConfig> reportOpt = reportConfigRepository.findById(reportId);
+                if (reportOpt.isPresent()) {
+                    reports.add(reportOpt.get());
+                }
+            }
+            
+            if (reports.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            byte[] exportData;
+            String filename;
+            String contentType;
+            
+            switch (format.toLowerCase()) {
+                case "excel":
+                    exportData = exportToExcel(reports, options);
+                    filename = "批量导出_" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date()) + ".xlsx";
+                    contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                    break;
+                case "pdf":
+                    exportData = exportToPdf(reports, options);
+                    filename = "批量导出_" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date()) + ".pdf";
+                    contentType = "application/pdf";
+                    break;
+                case "json":
+                    exportData = exportToJson(reports, options);
+                    filename = "批量导出_" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date()) + ".json";
+                    contentType = "application/json";
+                    break;
+                default:
+                    return ResponseEntity.badRequest().build();
+            }
+            
+            return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                .header("Content-Type", contentType)
+                .body(exportData);
+                
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).build();
+        }
+    }
+    
+    /**
      * 获取导出选项
      */
     @GetMapping("/options")
@@ -203,5 +271,65 @@ public class ExportController {
         content += "}";
         
         return content.getBytes("UTF-8");
+    }
+    
+    /**
+     * 导出为Excel格式
+     */
+    private byte[] exportToExcel(List<ReportConfig> reports, Map<String, Object> options) throws Exception {
+        // 这里应该使用Apache POI或其他Excel库
+        // 为了演示，我们返回一个简单的CSV格式
+        StringBuilder csv = new StringBuilder();
+        csv.append("报表名称,描述,分类,标签,状态,创建时间,更新时间\n");
+        
+        for (ReportConfig report : reports) {
+            csv.append(String.format("\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n",
+                report.getName() != null ? report.getName() : "",
+                report.getDescription() != null ? report.getDescription() : "",
+                report.getCategory() != null ? report.getCategory() : "",
+                report.getTags() != null ? String.join(";", report.getTags()) : "",
+                report.getStatus() != null ? report.getStatus() : "",
+                report.getCreatedAt() != null ? report.getCreatedAt() : "",
+                report.getUpdatedAt() != null ? report.getUpdatedAt() : ""
+            ));
+        }
+        
+        return csv.toString().getBytes("UTF-8");
+    }
+    
+    /**
+     * 导出为PDF格式
+     */
+    private byte[] exportToPdf(List<ReportConfig> reports, Map<String, Object> options) throws Exception {
+        // 这里应该使用iText或其他PDF库
+        // 为了演示，我们返回一个简单的文本格式
+        StringBuilder pdf = new StringBuilder();
+        pdf.append("MongoReporter 批量导出报告\n");
+        pdf.append("导出时间: ").append(new java.util.Date()).append("\n\n");
+        
+        for (ReportConfig report : reports) {
+            pdf.append("报表名称: ").append(report.getName()).append("\n");
+            pdf.append("描述: ").append(report.getDescription()).append("\n");
+            pdf.append("分类: ").append(report.getCategory()).append("\n");
+            pdf.append("状态: ").append(report.getStatus()).append("\n");
+            pdf.append("创建时间: ").append(report.getCreatedAt()).append("\n");
+            pdf.append("---\n");
+        }
+        
+        return pdf.toString().getBytes("UTF-8");
+    }
+    
+    /**
+     * 导出为JSON格式
+     */
+    private byte[] exportToJson(List<ReportConfig> reports, Map<String, Object> options) throws Exception {
+        Map<String, Object> exportData = new HashMap<>();
+        exportData.put("exportTime", new java.util.Date());
+        exportData.put("totalCount", reports.size());
+        exportData.put("reports", reports);
+        
+        // 使用Jackson或其他JSON库
+        ObjectMapper mapper = new ObjectMapper();
+        return mapper.writeValueAsBytes(exportData);
     }
 } 
