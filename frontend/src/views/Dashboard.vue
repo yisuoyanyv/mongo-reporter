@@ -24,12 +24,6 @@
       </el-col>
     </el-row>
 
-    <!-- 性能监控组件 -->
-    <el-row :gutter="20" style="margin-top: 20px;">
-      <el-col :span="24">
-        <PerformanceMonitor />
-      </el-col>
-    </el-row>
 
     <el-row :gutter="20" style="margin-top: 20px;">
       <!-- 统计卡片 -->
@@ -97,17 +91,21 @@
         </el-card>
       </el-col>
 
-      <!-- 系统性能监控 -->
+      <!-- 系统监控快捷入口 -->
       <el-col :span="12">
-        <el-card>
+        <el-card class="quick-monitor-card">
           <template #header>
             <div class="card-header">
-              <span>系统性能监控</span>
-              <el-button link @click="refreshChartData('systemPerformance')">刷新</el-button>
+              <span>系统监控</span>
+              <el-button link @click="$router.push('/monitor')">前往</el-button>
             </div>
           </template>
-          <div class="chart-container">
-            <v-chart :option="systemPerformanceOption" :style="{ height: '300px' }" />
+          <div class="quick-monitor">
+            <el-icon :size="28" style="margin-right:8px"><Connection /></el-icon>
+            <div>
+              <div style="font-weight:600;">查看CPU/内存/磁盘等实时性能</div>
+              <div style="opacity:0.8;font-size:12px;">更详细的数据请前往系统监控页面</div>
+            </div>
           </div>
         </el-card>
       </el-col>
@@ -364,7 +362,6 @@ import {
 } from 'echarts/components'
 import VChart from 'vue-echarts'
 import axios from 'axios'
-import PerformanceMonitor from '@/components/PerformanceMonitor.vue'
 
 // 注册ECharts组件
 use([
@@ -395,7 +392,6 @@ const systemInfo = ref(null)
 const reportTrendOption = ref({})
 const userActivityOption = ref({})
 const reportCategoriesOption = ref({})
-const systemPerformanceOption = ref({})
 
 // 通知数据
 const notifications = ref([])
@@ -553,45 +549,7 @@ const fetchReportCategories = async () => {
   }
 }
 
-// 获取系统性能数据
-const fetchSystemPerformance = async () => {
-  try {
-    const response = await axios.get('/api/system/charts/system-performance')
-    const data = response.data
-    
-    systemPerformanceOption.value = {
-      title: {
-        text: data.title,
-        left: 'center'
-      },
-      tooltip: {
-        trigger: 'axis'
-      },
-      xAxis: {
-        type: 'category',
-        data: data.metrics
-      },
-      yAxis: {
-        type: 'value',
-        max: 100
-      },
-      series: [{
-        data: data.values,
-        type: 'bar',
-        itemStyle: {
-          color: function(params) {
-            const value = params.value
-            if (value > 80) return '#F56C6C'
-            if (value > 60) return '#E6A23C'
-            return '#67C23A'
-          }
-        }
-      }]
-    }
-  } catch (error) {
-    console.error('获取系统性能数据失败:', error)
-  }
-}
+// 已移除：系统性能数据由“系统监控”页面负责
 
 // 刷新图表数据
 const refreshChartData = async (chartType) => {
@@ -609,9 +567,7 @@ const refreshChartData = async (chartType) => {
       case 'reportCategories':
         await fetchReportCategories()
         break
-      case 'systemPerformance':
-        await fetchSystemPerformance()
-        break
+      
     }
     ElMessage.success('数据已刷新')
   } catch (error) {
@@ -627,7 +583,6 @@ const refreshSystemInfo = () => {
   fetchReportTrend()
   fetchUserActivity()
   fetchReportCategories()
-  fetchSystemPerformance()
   ElMessage.success('系统信息已刷新')
 }
 
@@ -741,7 +696,6 @@ const refreshRecentActivity = async () => {
 const startAutoRefresh = () => {
   refreshTimer = setInterval(() => {
     fetchSystemStats()
-    fetchSystemPerformance()
     refreshDataSourceStatus()
     refreshRecentActivity()
   }, 30000) // 每30秒刷新一次
@@ -763,7 +717,6 @@ onMounted(() => {
   fetchReportTrend()
   fetchUserActivity()
   fetchReportCategories()
-  fetchSystemPerformance()
   refreshDataSourceStatus()
   refreshRecentActivity()
   startAutoRefresh()
@@ -849,6 +802,9 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
 }
+
+.quick-monitor { display:flex; align-items:center; padding:12px; }
+.quick-monitor-card :deep(.el-card__body) { padding: 16px; }
 
 .chart-container {
   width: 100%;
