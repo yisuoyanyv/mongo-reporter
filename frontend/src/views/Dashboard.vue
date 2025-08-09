@@ -25,7 +25,7 @@
     </el-row>
 
 
-    <el-row :gutter="20" style="margin-top: 20px;">
+    <el-row :gutter="20" class="section">
       <!-- 统计卡片 -->
       <el-col :xs="24" :sm="12" :md="6" v-for="stat in stats" :key="stat.title">
         <el-card class="stat-card" :class="stat.type">
@@ -44,7 +44,7 @@
       </el-col>
     </el-row>
 
-    <el-row :gutter="20" style="margin-top: 20px;">
+    <el-row :gutter="20" class="section">
       <!-- 图表区域 -->
       <el-col :span="12">
         <el-card>
@@ -75,7 +75,7 @@
       </el-col>
     </el-row>
 
-    <el-row :gutter="20" style="margin-top: 20px;">
+    <el-row :gutter="20" class="section">
       <!-- 报表分类统计 -->
       <el-col :span="12">
         <el-card>
@@ -242,7 +242,7 @@
     </el-row>
 
     <!-- 新增：实时通知区域 -->
-    <el-row :gutter="20" style="margin-top: 20px;">
+    <el-row :gutter="20" class="section">
       <el-col :span="24">
         <el-card>
           <template #header>
@@ -803,6 +803,7 @@ onUnmounted(() => {
   align-items: center;
 }
 
+.section { margin-top: 20px; }
 .quick-monitor { display:flex; align-items:center; padding:12px; }
 .quick-monitor-card :deep(.el-card__body) { padding: 16px; }
 
