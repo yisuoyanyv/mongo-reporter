@@ -497,16 +497,21 @@ const testEmailConfig = async () => {
     ElMessage.warning('请先启用邮件通知')
     return
   }
-  
   if (!notificationSettings.value.smtpServer || !notificationSettings.value.emailAccount) {
     ElMessage.warning('请先配置SMTP服务器和邮箱账号')
     return
   }
-  
   try {
     ElMessage.info('正在测试邮件配置...')
-    // TODO: 实现邮件测试功能
-    ElMessage.success('邮件配置测试成功')
+    const resp = await axios.post('/api/settings/test/email', {
+      smtpServer: notificationSettings.value.smtpServer,
+      smtpPort: notificationSettings.value.smtpPort
+    })
+    if (resp.data?.success) {
+      ElMessage.success(`邮件配置测试成功，延迟 ${resp.data.latencyMs || '-'} ms`)
+    } else {
+      ElMessage.error(`邮件配置测试失败: ${resp.data?.message || '未知错误'}`)
+    }
   } catch (error) {
     console.error('邮件配置测试失败:', error)
     ElMessage.error('邮件配置测试失败: ' + (error.response?.data?.message || error.message))
@@ -519,11 +524,16 @@ const testBackupPath = async () => {
     ElMessage.warning('请先配置备份路径')
     return
   }
-  
   try {
     ElMessage.info('正在测试备份路径...')
-    // TODO: 实现备份路径测试功能
-    ElMessage.success('备份路径测试成功')
+    const resp = await axios.post('/api/settings/test/backup', {
+      backupPath: backupSettings.value.backupPath
+    })
+    if (resp.data?.success) {
+      ElMessage.success('备份路径测试成功')
+    } else {
+      ElMessage.error(`备份路径测试失败: ${resp.data?.message || '未知错误'}`)
+    }
   } catch (error) {
     console.error('备份路径测试失败:', error)
     ElMessage.error('备份路径测试失败: ' + (error.response?.data?.message || error.message))
